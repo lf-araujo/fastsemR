@@ -4,42 +4,100 @@
 
 #' Fit a structural equation model from lavaan syntax.
 #'
-#' Passes lavaan model syntax and a data matrix to the fastsem engine.
-#' Supported estimators: ML (complete data), FIML (missing data / definition
-#' variables), DWLS / WLSMV (ordinal indicators).  Multi-group models are
-#' specified via a `group: colname` directive in the syntax.
+#' The workhorse function of fastsemR.  Passes lavaan model syntax and a
+#' data matrix to the fastsem compiled engine and returns a named list of fit
+#' statistics and parameter estimates.
 #'
-#' @param syntax Character string of lavaan model syntax.  Extended fastsem
-#'   syntax is supported: parameter labels, equality constraints (`b1 == b2`),
-#'   bounds (`b1 > 0`), derived parameters (`ab := a * b`), definition
-#'   variables (`data.colname * var`), and multi-group `c()` annotations.
+#' @section Estimators:
+#' The estimator is chosen automatically based on the data and model:
+#' * **ML** — complete data, no definition variables, no ordinal indicators.
+#' * **FIML** — missing data (`NA`) present, or definition variables used.
+#' * **DWLS / WLSMV** — ordinal indicators declared with `ordered:` or
+#'   threshold syntax (`y | t1 + t2`).
+#'
+#' @section Extended lavaan syntax:
+#' Beyond standard lavaan, fastsem supports:
+#' * **Parameter labels** — `b1*var`: assign the label `b1` to the path.
+#' * **Equality constraints** — two params with the same label are equated,
+#'   or `b1 == b2` on a standalone line.
+#' * **Bounds** — `b1 > 0.5` / `b1 < 2.0`.
+#' * **Starting values** — `start(0.8)*var`.
+#' * **Derived parameters** — `indirect := a * b` (delta-method SE).
+#' * **Definition variables** — `data.colname * var` on the RHS of `=~`.
+#' * **Multi-group** — `group: colname` directive plus `c(v1, v2)*var`
+#'   per-group annotations.
+#' * **Weighted observations** — `weight: colname`.
+#' * **Cluster-robust SEs** — `cluster: colname`.
+#'
+#' @param syntax Character string of lavaan model syntax.
 #' @param data Data frame or numeric matrix.  Non-numeric columns are coerced
 #'   to `NA`.  Row order is preserved.
 #' @param col_names Character vector of column names.  Defaults to
-#'   `colnames(data)`.  Must contain all observed variables named in `syntax`.
+#'   `colnames(data)`.  Must include every observed variable named in
+#'   `syntax`.
 #'
-#' @return Named list with elements:
+#' @return A named list with the following elements:
 #'   \describe{
-#'     \item{`chi2`, `df`, `pvalue`}{Model fit statistics.}
-#'     \item{`neg2logL`, `aic`, `bic`}{Information criteria.}
-#'     \item{`nobs`, `nFreeParams`}{Sample size and free parameter count.}
-#'     \item{`estimator`, `seType`}{Strings identifying the estimator and SE
-#'       type (e.g. `"ML"`, `"OIM"` or `"cluster-robust"`).}
-#'     \item{`paramNames`, `estimates`, `se`, `z`}{Parameter table vectors.}
-#'     \item{`stdEst`, `stdSE`}{StdAll standardized solution and its SEs.}
-#'     \item{`groupEstimates`, `groupSEs`}{Per-group estimate and SE lists
-#'       (multi-group models only).}
+#'     \item{`estimator`}{Character. `"ML"`, `"FIML"`, or `"DWLS"`.}
+#'     \item{`seType`}{Character. SE method, e.g. `"OIM"` or `"cluster-robust"`.}
+#'     \item{`nobs`}{Integer. Number of observations (or effective N for weighted
+#'       models).}
+#'     \item{`nFreeParams`}{Integer. Number of free parameters.}
+#'     \item{`df`}{Integer. Model degrees of freedom.}
+#'     \item{`chi2`}{Numeric. Chi-square test statistic.}
+#'     \item{`pvalue`}{Numeric. Chi-square p-value.}
+#'     \item{`neg2logL`}{Numeric. \eqn{-2 \ln L} value.}
+#'     \item{`aic`}{Numeric. Akaike information criterion.}
+#'     \item{`bic`}{Numeric. Bayesian information criterion.}
+#'     \item{`paramNames`}{Character vector. Structural names of all free
+#'       parameters (e.g. `"f->y1"`, `"Var(y1)"`, `"y1~1"`).}
+#'     \item{`estimates`}{Numeric vector. Parameter estimates in the same
+#'       order as `paramNames`.  Variance parameters are on the original
+#'       (not log) scale.}
+#'     \item{`se`}{Numeric vector. Standard errors.}
+#'     \item{`z`}{Numeric vector. z-statistics (`estimates / se`).}
+#'     \item{`stdEst`}{Numeric vector. StdAll standardised estimates.}
+#'     \item{`stdSE`}{Numeric vector. Delta-method SEs for `stdEst`.}
+#'     \item{`groupEstimates`}{List of numeric vectors (multi-group models).
+#'       `groupEstimates[[g]]` contains the per-group estimates for group
+#'       `g` in the shared parameter space.}
+#'     \item{`groupSEs`}{List of numeric vectors (multi-group models).}
 #'   }
+#'
+#' @seealso [print_fastsem()] to display the result;
+#'   [run_fastsem()] for the umx/OpenMx bridge.
+#'
 #' @export
 #' @examples
 #' \dontrun{
+#' # Single-factor CFA on simulated data
+#' set.seed(1)
+#' n  <- 200
+#' f  <- rnorm(n)
+#' df <- data.frame(y1 = 0.8*f + rnorm(n, sd=0.6),
+#'                  y2 = 0.9*f + rnorm(n, sd=0.5),
+#'                  y3 = 0.7*f + rnorm(n, sd=0.7))
+#'
 #' syntax <- "
 #'   f =~ 1*y1 + y2 + y3
 #'   f ~~ f
-#'   y1 ~~ y1; y2 ~~ y2; y3 ~~ y3
+#'   y1 ~~ y1;  y2 ~~ y2;  y3 ~~ y3
 #' "
-#' res <- fastsem_fit(syntax, mydata)
+#' res <- fastsem_fit(syntax, df)
 #' print_fastsem(res)
+#'
+#' # Mediation with derived indirect effect
+#' df2 <- as.data.frame(scale(mtcars[, c("mpg","hp","wt")]))
+#' syntax2 <- "
+#'   wt  ~ a*hp
+#'   mpg ~ b*wt + c_prime*hp
+#'   hp ~~ hp;  wt ~~ wt;  mpg ~~ mpg
+#'   hp ~ 1;  wt ~ 1;  mpg ~ 1
+#'   ab := a * b
+#' "
+#' res2 <- fastsem_fit(syntax2, df2)
+#' cat("Indirect hp->wt->mpg:", res2$estimates[res2$paramNames == "ab"],
+#'     "+/-", res2$se[res2$paramNames == "ab"], "\n")
 #' }
 fastsem_fit <- function(syntax, data, col_names = NULL) {
   if (!isTRUE(.fastsem_env$loaded))
@@ -55,13 +113,26 @@ fastsem_fit <- function(syntax, data, col_names = NULL) {
   .Call(sym, as.character(syntax)[1], mat, as.character(col_names))
 }
 
-#' Return the observed variable names that fastsem will use from a lavaan syntax.
+#' Extract observed variable names referenced by a lavaan syntax string.
 #'
-#' @param syntax lavaan syntax string.
-#' @param col_names All column names present in the data set.
-#' @return Character vector of variable names found in both `syntax` and
-#'   `col_names`.
+#' Parses the model syntax and returns only those variable names that are
+#' also present in `col_names`.  Useful for subsetting a data frame before
+#' passing it to [fastsem_fit()].
+#'
+#' @param syntax Character. lavaan model syntax string.
+#' @param col_names Character vector of all column names in the data set.
+#'
+#' @return Character vector of variable names that appear in both `syntax`
+#'   and `col_names`.
+#'
 #' @export
+#' @examples
+#' \dontrun{
+#' syntax   <- "f =~ y1 + y2 + y3\nf ~~ f\ny1 ~~ y1\ny2 ~~ y2\ny3 ~~ y3"
+#' all_cols <- c("id", "y1", "y2", "y3", "y4", "group")
+#' fastsem_sem_vars(syntax, all_cols)
+#' # [1] "y1" "y2" "y3"
+#' }
 fastsem_sem_vars <- function(syntax, col_names) {
   if (!isTRUE(.fastsem_env$loaded))
     stop("fastsem native library is not loaded. ",
@@ -74,35 +145,76 @@ fastsem_sem_vars <- function(syntax, col_names) {
 
 #' Convert a umx / OpenMx RAM model to lavaan syntax.
 #'
-#' Translates the RAM matrices (A, S, M) of an `MxModel` into the extended
-#' lavaan syntax accepted by `fastsem_fit()`.  Handles:
+#' Inspects the RAM matrices (A, S, M) of an `MxModel` and generates the
+#' extended lavaan syntax string that [fastsem_fit()] expects.  This is
+#' called internally by [run_fastsem()] but is also useful for inspection
+#' or for further hand-editing before fitting.
 #'
-#' * Factor loadings and structural paths (A matrix).
-#' * Variances, covariances, and fixed values (S matrix).
-#' * Intercepts / means (M matrix).
-#' * Definition variables (`data.colname` labels → `data.colname * var`).
-#' * Equality constraints (shared labels across free parameters).
-#' * Parameter bounds from `S@lbound` / `S@ubound` and `A@lbound` /
-#'   `A@ubound`.
-#' * Starting values via `start(val)*var` tokens.
+#' @section Translations performed:
+#' \describe{
+#'   \item{A matrix (directional)}{
+#'     Latent → manifest paths become `factor =~ indicator` lines.
+#'     Latent → latent become `~` regression lines.
+#'     Manifest → manifest become `~` regression lines.
+#'     A label starting with `"data."` is treated as a definition variable
+#'     and emitted as `data.colname * indicator`.
+#'   }
+#'   \item{S matrix (symmetric)}{
+#'     Free diagonal entries → `var ~~ var` (with `start()` or label if set).
+#'     Fixed non-zero diagonal entries → `var ~~ value*var`.
+#'     Free off-diagonal → `a ~~ b` covariance.
+#'   }
+#'   \item{M matrix (means)}{
+#'     Free entries → `var ~ 1` (with `start()` if the starting value is
+#'     non-zero).
+#'     Fixed non-zero entries → `var ~ value*1`.
+#'   }
+#'   \item{Bounds}{
+#'     `S@lbound` / `S@ubound` / `A@lbound` / `A@ubound` → `label > lo` /
+#'     `label < hi` lines.  Variance lower bounds of 0 are suppressed
+#'     because fastsem's log-variance parameterisation already prevents
+#'     negative variances.
+#'   }
+#'   \item{Equality constraints}{
+#'     Labels appearing on more than one free parameter are emitted as
+#'     `label*var`, which fastsem treats as an equality constraint.
+#'   }
+#' }
 #'
 #' @param model An `MxModel` as returned by `umxRAM()` or `mxModel()`.
-#' @param include_map Logical.  If `TRUE`, return a list with `$syntax` and
-#'   `$param_map` (a named character vector mapping fastsem structural names to
-#'   OpenMx parameter labels, used internally for inject-back).
+#' @param include_map Logical (default `FALSE`).  When `TRUE` returns a list
+#'   with two elements:
+#'   \describe{
+#'     \item{`syntax`}{The lavaan syntax string.}
+#'     \item{`param_map`}{Named character vector mapping fastsem structural
+#'       names (e.g. `"f->y1"`) to OpenMx free-parameter labels
+#'       (e.g. `"g_to_y1"`).  Used by [run_fastsem()] for inject-back.}
+#'   }
 #'
-#' @return Character string containing the lavaan syntax (default), or a named
-#'   list with `$syntax` and `$param_map` when `include_map = TRUE`.
+#' @return Character string (default) or named list when `include_map = TRUE`.
+#'
+#' @seealso [run_fastsem()] to fit and inject back in one step.
+#'
 #' @export
 #' @examples
 #' \dontrun{
 #' library(umx)
+#' df <- as.data.frame(scale(iris[, c(1, 3, 4)]))
+#' names(df) <- c("sl", "pl", "pw")
+#'
 #' m <- umxRAM("CFA",
-#'   umxPath(from = "f", to = c("y1","y2","y3")),
-#'   umxPath(v1m0 = "f"), umxPath(var = c("y1","y2","y3")),
-#'   data = mydata, autoRun = FALSE
+#'   umxPath(from = "g", to = c("sl", "pl", "pw")),
+#'   umxPath(v1m0 = "g"),
+#'   umxPath(var  = c("sl", "pl", "pw")),
+#'   data = df, autoRun = FALSE
 #' )
+#'
+#' # Inspect the generated syntax
 #' cat(umx_to_lavaan(m))
+#'
+#' # Include the parameter map for custom inject-back
+#' out <- umx_to_lavaan(m, include_map = TRUE)
+#' str(out$param_map)
 #' }
 umx_to_lavaan <- function(model, include_map = FALSE) {
   if (!requireNamespace("OpenMx", quietly = TRUE))
@@ -131,13 +243,10 @@ umx_to_lavaan <- function(model, include_map = FALSE) {
   param_map <- character(0)
 
   # Pre-scan: labels appearing on >1 free parameter are equality constraints
-  # and MUST be preserved in the emitted syntax so fastsem equates them.
   all_free_labs <- c(A_labs[A_free], S_labs[S_free])
   all_free_labs <- all_free_labs[!is.na(all_free_labs) & nzchar(all_free_labs)]
   equality_labels <- names(which(table(all_free_labs) > 1))
 
-  # Emit a single lavaan term token (e.g. "label*x1", "start(0.5)*x1", "x1").
-  # Records struct_name → omx_label in param_map for inject-back.
   emit_path_term <- function(from_var, to_var, term_var, val, free_flag, lab) {
     struct_name <- paste0(from_var, "->", to_var)
     if (isTRUE(free_flag)) {
@@ -297,7 +406,6 @@ umx_to_lavaan <- function(model, include_map = FALSE) {
         if (is.na(lab) || !nzchar(lab)) next
         lo <- if (!is.null(lb)) lb[i, j] else NA_real_
         hi <- if (!is.null(ub)) ub[i, j] else NA_real_
-        # Skip variance lower bounds — fastsem's log(σ²) already guarantees σ²>0
         is_diag <- (i == j)
         if (!is_diag && !is.na(lo) && is.finite(lo) && lo > 0)
           acc <- c(acc, sprintf("%s > %g", lab, lo))
@@ -315,34 +423,82 @@ umx_to_lavaan <- function(model, include_map = FALSE) {
   else syntax
 }
 
-#' Fit a umx/OpenMx RAM model with fastsem and return an updated model object.
+#' Fit a umx / OpenMx RAM model with fastsem and return the updated model.
 #'
-#' Translates the model to lavaan syntax, fits with the fastsem engine, then
-#' writes estimates and fit statistics back into the model object so that
-#' `summary()`, `omxGetParameters()`, and `umxCompare()` work as usual.
+#' The primary high-level function for users who work with `umxRAM()` models.
+#' It:
+#' 1. Translates the model to lavaan syntax via [umx_to_lavaan()].
+#' 2. Extracts raw data from `model@data@observed`.
+#' 3. Fits the model with [fastsem_fit()].
+#' 4. Writes estimates back into the model matrices and populates
+#'    `model@output` so that `summary()`, `omxGetParameters()`, and
+#'    `umxCompare()` work as if `mxRun()` had been called.
 #'
-#' For multi-group models (`model@submodels` non-empty), submodel data are
-#' stacked with a group indicator column, parameters that share the same OpenMx
-#' label across all submodels are equated, and group-specific parameters are
-#' fitted independently (configural for that parameter).  Per-group estimates
-#' are injected back into each submodel.
+#' @section Multi-group models:
+#' When `model@submodels` is non-empty, [run_fastsem()] stacks the data from
+#' all submodels with a `fastsem_grp` group indicator, builds a combined
+#' lavaan syntax with `c()` per-group annotations (see [fastsem_fit()]),
+#' fits the joint model, and injects per-group estimates back into each
+#' submodel.  Parameters that carry the same OpenMx label in all submodels
+#' are equated (metric invariance for that parameter); others are
+#' group-specific (configural).
 #'
-#' @param model An `MxModel` as returned by `umxRAM()`.  Must have raw
-#'   (row-level) data in `model@data@observed`.
+#' @param model An `MxModel` as returned by `umxRAM()` (or a bare `mxModel`
+#'   container holding submodels for multi-group use).  The model must have
+#'   raw (row-level) data in `model@data@observed`.
 #'
-#' @return The same `MxModel` with matrices updated to the fastsem estimates
-#'   and `@output` populated so OpenMx summary/compare tools work.
+#' @return The same `MxModel` object with:
+#' \describe{
+#'   \item{Matrix values updated}{A, S, and M matrices hold the fastsem
+#'     point estimates.}
+#'   \item{`@output` populated}{`$estimate`, `$standardErrors`, `$fit`
+#'     (`-2lnL`), `$Chi`, `$ChiDoF`, plus `$.fastsem_*` slots for the
+#'     raw fastsem result list.}
+#'   \item{`@.wasRun` set to `TRUE`}{Makes `summary()` and `umxCompare()`
+#'     work.}
+#' }
+#'
+#' @seealso [umx_to_lavaan()] for syntax inspection;
+#'   [umx_to_fastsem()] for the raw result list without inject-back;
+#'   [fastsem_fit()] for fitting from raw lavaan syntax.
+#'
 #' @export
 #' @examples
 #' \dontrun{
 #' library(umx)
+#'
+#' # ── CFA ──────────────────────────────────────────────────────────────────
+#' df <- as.data.frame(scale(iris[, c(1, 3, 4)]))
+#' names(df) <- c("sl", "pl", "pw")
+#'
 #' m <- umxRAM("CFA",
-#'   umxPath(from = "f", to = c("y1","y2","y3")),
-#'   umxPath(v1m0 = "f"), umxPath(var = c("y1","y2","y3")),
-#'   data = mydata, autoRun = FALSE
+#'   umxPath(from = "g", to = c("sl", "pl", "pw")),
+#'   umxPath(v1m0 = "g"),
+#'   umxPath(var  = c("sl", "pl", "pw")),
+#'   data = df, autoRun = FALSE
 #' )
 #' m_fit <- run_fastsem(m)
 #' summary(m_fit)
+#' omxGetParameters(m_fit)
+#'
+#' # ── Multi-group CFA ───────────────────────────────────────────────────────
+#' data(HolzingerSwineford1939, package = "lavaan")
+#' hs <- HolzingerSwineford1939
+#'
+#' mg_p <- umxRAM("mg_p",
+#'   umxPath(from = "g", to = c("x1","x2","x3")),
+#'   umxPath(v1m0 = "g"), umxPath(var = c("x1","x2","x3")),
+#'   umxPath(means = c("x1","x2","x3")),
+#'   data = hs[hs$school == "Pasteur", c("x1","x2","x3")]
+#' )
+#' mg_gw <- umxRAM("mg_gw",
+#'   umxPath(from = "g", to = c("x1","x2","x3")),
+#'   umxPath(v1m0 = "g"), umxPath(var = c("x1","x2","x3")),
+#'   umxPath(means = c("x1","x2","x3")),
+#'   data = hs[hs$school == "Grant-White", c("x1","x2","x3")]
+#' )
+#' r <- run_fastsem(mxModel("HS_mg", mg_p, mg_gw))
+#' omxGetParameters(r@submodels$mg_p)
 #' }
 run_fastsem <- function(model) {
   if (!requireNamespace("OpenMx", quietly = TRUE))
@@ -391,8 +547,8 @@ run_fastsem <- function(model) {
     model@.modifiedSinceRun <- FALSE
 
   } else {
-    data     <- .extract_model_data(model)
-    lav_info <- umx_to_lavaan(model, include_map = TRUE)
+    data      <- .extract_model_data(model)
+    lav_info  <- umx_to_lavaan(model, include_map = TRUE)
     col_names <- colnames(data)
     if (is.null(col_names))
       stop("run_fastsem: data must have column names")
@@ -405,19 +561,41 @@ run_fastsem <- function(model) {
 
 #' Fit a umx model and return the raw fastsem result list.
 #'
-#' Lower-level alternative to `run_fastsem()` that returns the fastsem result
-#' list directly without injecting back into the model object.  Useful for
-#' inspecting raw fit statistics and parameter tables before working with the
-#' OpenMx model.
+#' A lower-level alternative to [run_fastsem()] that returns the raw fastsem
+#' result list without injecting estimates back into the model object.  Useful
+#' for inspecting fit statistics or parameter tables before committing to the
+#' OpenMx model representation, or when you do not need the full inject-back
+#' machinery.
 #'
-#' @param model An `MxModel` object.
-#' @param data Data frame containing the manifest variables.  Defaults to
-#'   the data embedded in `model@data@observed`.
-#' @param ... Passed to `fastsem_fit()`.
+#' @param model An `MxModel` object (from `umxRAM()` etc.).
+#' @param data Data frame of observed data.  Defaults to
+#'   `model@data@observed` when `NULL`.
+#' @param ... Reserved for future use.
 #'
-#' @return Named list as returned by `fastsem_fit()`, with an additional
-#'   `$lavaan_syntax` element.
+#' @return Named list as returned by [fastsem_fit()], with an additional
+#'   `$lavaan_syntax` element containing the translated lavaan syntax string
+#'   for inspection.
+#'
+#' @seealso [run_fastsem()] for the full inject-back workflow;
+#'   [fastsem_fit()] for fitting from raw lavaan syntax.
+#'
 #' @export
+#' @examples
+#' \dontrun{
+#' library(umx)
+#' df <- as.data.frame(scale(mtcars[, c("mpg","hp","wt")]))
+#'
+#' m <- umxRAM("path",
+#'   umxPath(from = c("hp","wt"), to = "mpg"),
+#'   umxPath(cov   = c("hp","wt")),
+#'   umxPath(var   = c("hp","wt","mpg")),
+#'   umxPath(means = c("hp","wt","mpg")),
+#'   data = df, autoRun = FALSE
+#' )
+#' res <- umx_to_fastsem(m)
+#' cat("lavaan syntax used:\n", res$lavaan_syntax, "\n")
+#' cat("chi2 =", res$chi2, "  df =", res$df, "\n")
+#' }
 umx_to_fastsem <- function(model, data = NULL, ...) {
   if (!requireNamespace("OpenMx", quietly = TRUE))
     stop("The 'OpenMx' package is required for umx_to_fastsem().")
@@ -439,9 +617,21 @@ umx_to_fastsem <- function(model, data = NULL, ...) {
 
 #' Print a fastsem result list in a human-readable table.
 #'
-#' @param res Named list as returned by `fastsem_fit()` or `umx_to_fastsem()`.
-#' @return Invisibly, `res`.
+#' Displays the estimator, fit statistics, parameter table (with estimates,
+#' SEs, and z-scores), and — when present — the StdAll standardised
+#' solution.
+#'
+#' @param res Named list as returned by [fastsem_fit()] or
+#'   [umx_to_fastsem()].
+#'
+#' @return Invisibly, `res` (the original list, unchanged).
+#'
 #' @export
+#' @examples
+#' \dontrun{
+#' res <- fastsem_fit(syntax, df)
+#' print_fastsem(res)
+#' }
 print_fastsem <- function(res) {
   cat(sprintf("fastsem  --  %s  [SE: %s]\n", res$estimator, res$seType))
   cat(sprintf("  N=%-6d  free params=%-4d  df=%-4d\n",
@@ -651,7 +841,6 @@ print_fastsem <- function(res) {
     paste0("c(", paste(c_vals, collapse = ", "), ")*", dest_var)
   }
 
-  # Factor loadings
   for (lv in lat_vars) {
     if (!(lv %in% colnames(A_ref@values))) next
     terms <- character(0)
@@ -675,7 +864,6 @@ print_fastsem <- function(res) {
       lines <- c(lines, sprintf("%s =~ %s", lv, paste(terms, collapse = " + ")))
   }
 
-  # Structural paths between latents
   for (lv_to in lat_vars) {
     if (!(lv_to %in% rownames(A_ref@values))) next
     preds <- character(0)
@@ -696,7 +884,6 @@ print_fastsem <- function(res) {
       lines <- c(lines, sprintf("%s ~ %s", lv_to, paste(preds, collapse = " + ")))
   }
 
-  # Regressions
   for (mv_to in man_vars) {
     if (!(mv_to %in% rownames(A_ref@values))) next
     preds <- character(0)
@@ -717,7 +904,6 @@ print_fastsem <- function(res) {
       lines <- c(lines, sprintf("%s ~ %s", mv_to, paste(preds, collapse = " + ")))
   }
 
-  # Variances and covariances
   nv <- length(all_vars)
   for (i in seq_len(nv)) {
     vi <- all_vars[i]
@@ -749,7 +935,6 @@ print_fastsem <- function(res) {
     }
   }
 
-  # Intercepts
   if (has_M) {
     M_ref <- ref@matrices$M
     for (vn in colnames(M_ref@values)) {

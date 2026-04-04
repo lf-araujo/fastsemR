@@ -1,0 +1,289 @@
+---
+title: "Getting started with fastsemR"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with fastsemR}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE, comment = "#>",
+  eval = requireNamespace("fastsemR", quietly = TRUE) &&
+         isTRUE(fastsemR:::.fastsem_env$loaded)
+)
+library(fastsemR)
+```
+
+fastsemR wraps the [fastsem](https://github.com/lf-araujo/fastsem) compiled
+SEM engine.  Unlike lavaan it uses a pre-compiled Nim binary, which keeps R
+memory management out of the hot loop and allows optional GPU acceleration.
+This vignette walks through the main use cases using only base-R datasets.
+
+## Installation and setup
+
+```{r, eval=FALSE}
+# Install from GitHub
+devtools::install_github("lf-araujo/fastsemR")
+
+# The binary is downloaded automatically on first load.
+# To upgrade or to point at a local build:
+library(fastsemR)
+fastsem_update()                              # download latest release
+fastsem_load("~/fastsem/libfastsem_r.so")    # or use a local build
+```
+
+Once the library is loaded, `fastsem_fit()` is available.
+
+---
+
+## 1. Path model (observed variables)
+
+We regress fuel economy (`mpg`) on horsepower (`hp`) and weight (`wt`),
+allowing the two predictors to covary.  Data are scaled so default starting
+values work well.
+
+```{r path-model}
+df <- as.data.frame(scale(mtcars[, c("mpg", "hp", "wt")]))
+
+syntax_path <- "
+  # Structural part
+  mpg ~ hp + wt
+  # Predictor covariance
+  hp ~~ wt
+  # Residual / total variances
+  hp ~~ hp
+  wt ~~ wt
+  mpg ~~ mpg
+  # Intercepts (needed for FIML even on complete data)
+  mpg ~ 1
+  hp  ~ 1
+  wt  ~ 1
+"
+
+res_path <- fastsem_fit(syntax_path, df)
+print_fastsem(res_path)
+```
+
+The saturated path model has `df = 0`, so `chi2 = 0` and fit indices are
+undefined.  Adding a constraint (e.g. fixing the `hp → mpg` path to zero)
+would give `df = 1` and a testable chi-square.
+
+---
+
+## 2. Confirmatory factor analysis
+
+A single factor `g` is measured by three positively correlated iris
+variables.  We fix the latent variance to 1 (`g ~~ 1*g`) to set the scale
+instead of fixing a loading.
+
+```{r cfa}
+df_iris <- as.data.frame(scale(iris[, c(1, 3, 4)]))
+names(df_iris) <- c("sl", "pl", "pw")
+
+syntax_cfa <- "
+  g =~ sl + pl + pw
+  g ~~ 1*g
+  sl ~~ sl
+  pl ~~ pl
+  pw ~~ pw
+"
+
+res_cfa <- fastsem_fit(syntax_cfa, df_iris)
+print_fastsem(res_cfa)
+```
+
+The standardised estimates (StdAll) are printed automatically when available.
+All three loadings should be close to 0.85–1.00 for the strongly correlated
+iris variables.
+
+---
+
+## 3. FIML with missing data
+
+fastsem automatically activates FIML when `NA` values are present.  The
+estimator label in the output switches from `"ML"` to `"FIML"`.
+
+```{r fiml}
+set.seed(99)
+df_miss <- as.data.frame(scale(mtcars[, c("mpg", "hp", "wt")]))
+df_miss$mpg[sample(32, 5)] <- NA   # 15% missing on mpg
+df_miss$wt[sample(32, 3)]  <- NA   # 9% missing on wt
+
+res_fiml <- fastsem_fit(syntax_path, df_miss)
+cat("Estimator:", res_fiml$estimator, "\n")
+cat("hp->mpg:", round(res_fiml$estimates[res_fiml$paramNames == "hp->mpg"], 3), "\n")
+cat("wt->mpg:", round(res_fiml$estimates[res_fiml$paramNames == "wt->mpg"], 3), "\n")
+```
+
+Estimates with partial missingness should be close to the complete-data
+values above because the data were simulated without a missingness mechanism.
+
+---
+
+## 4. Parameter labels, equality constraints, and bounds
+
+### 4a. Labels and the `start()` token
+
+Label a path `b1` so that its estimate appears in the output under that
+name and can be referenced in derived parameters.
+
+```{r labels}
+syntax_lab <- "
+  mpg ~ b1*hp + b2*wt
+  hp ~~ wt
+  hp ~~ hp;  wt ~~ wt;  mpg ~~ mpg
+  mpg ~ 1;   hp ~ 1;    wt ~ 1
+"
+res_lab <- fastsem_fit(syntax_lab, df)
+cat("b1 (hp->mpg):", round(res_lab$estimates[res_lab$paramNames == "b1"], 3), "\n")
+cat("b2 (wt->mpg):", round(res_lab$estimates[res_lab$paramNames == "b2"], 3), "\n")
+```
+
+### 4b. Equality constraints
+
+Two paths with the same label are constrained to be equal.  Here we force
+`hp` and `wt` to have the same slope onto `mpg`:
+
+```{r equality}
+syntax_eq <- "
+  mpg ~ eq*hp + eq*wt
+  hp ~~ wt
+  hp ~~ hp;  wt ~~ wt;  mpg ~~ mpg
+  mpg ~ 1;   hp ~ 1;    wt ~ 1
+"
+res_eq <- fastsem_fit(syntax_eq, df)
+cat("Constrained slope (eq):", round(res_eq$estimates[res_eq$paramNames == "eq"], 3), "\n")
+cat("df (1 constraint):", res_eq$df, "\n")
+cat("chi2:", round(res_eq$chi2, 3), "  p =", round(res_eq$pvalue, 3), "\n")
+```
+
+### 4c. Bounds
+
+Bound the `hp → mpg` coefficient to be negative (upper bound = 0):
+
+```{r bounds}
+syntax_bnd <- "
+  mpg ~ b1*hp + b2*wt
+  hp ~~ wt
+  hp ~~ hp;  wt ~~ wt;  mpg ~~ mpg
+  mpg ~ 1;   hp ~ 1;    wt ~ 1
+  b1 < 0
+"
+res_bnd <- fastsem_fit(syntax_bnd, df)
+cat("b1 with upper bound 0:", round(res_bnd$estimates[res_bnd$paramNames == "b1"], 4), "\n")
+```
+
+---
+
+## 5. Derived parameters (indirect effects)
+
+The `:=` operator computes a derived quantity at the optimum and applies the
+delta method to obtain its SE.  Here we test a simple mediation:
+`hp → wt → mpg`.
+
+```{r indirect}
+syntax_med <- "
+  wt  ~ a*hp
+  mpg ~ b*wt + c_prime*hp
+  hp ~~ hp;  wt ~~ wt;  mpg ~~ mpg
+  hp ~ 1;    wt ~ 1;    mpg ~ 1
+  ab := a * b
+"
+res_med <- fastsem_fit(syntax_med, df)
+
+idx_ab <- which(res_med$paramNames == "ab")
+cat(sprintf("Indirect (hp->wt->mpg):  est = %6.4f,  SE = %6.4f,  z = %5.2f\n",
+            res_med$estimates[idx_ab],
+            res_med$se[idx_ab],
+            res_med$z[idx_ab]))
+```
+
+The z-statistic tests whether the indirect effect differs from zero under
+the delta-method normal approximation.
+
+---
+
+## 6. Comparison with OpenMx
+
+When working with `umxRAM()` models, `run_fastsem()` handles translation and
+inject-back automatically.  The estimates should match OpenMx's ML
+estimates closely.
+
+```{r compare-omx, eval=requireNamespace("umx", quietly=TRUE) && isTRUE(fastsemR:::.fastsem_env$loaded)}
+library(umx)
+umx_set_auto_run(FALSE)
+
+m_fs <- umxRAM("path_fs",
+  umxPath(from = c("hp","wt"), to = "mpg"),
+  umxPath(cov   = c("hp","wt")),
+  umxPath(var   = c("hp","wt","mpg")),
+  umxPath(means = c("hp","wt","mpg")),
+  data = df
+)
+m_fs <- run_fastsem(m_fs)
+
+umx_set_auto_run(TRUE)
+m_omx <- umxRAM("path_omx",
+  umxPath(from = c("hp","wt"), to = "mpg"),
+  umxPath(cov   = c("hp","wt")),
+  umxPath(var   = c("hp","wt","mpg")),
+  umxPath(means = c("hp","wt","mpg")),
+  data = df
+)
+umx_set_auto_run(FALSE)
+
+cat("\nfastsem vs OpenMx (hp->mpg, wt->mpg):\n")
+print(round(rbind(
+  fastsem = omxGetParameters(m_fs)[c("hp_to_mpg","wt_to_mpg")],
+  OpenMx  = omxGetParameters(m_omx)[c("hp_to_mpg","wt_to_mpg")]
+), 4))
+```
+
+---
+
+## 7. Multi-group CFA
+
+Multi-group models are handled by `run_fastsem()` automatically when the
+`MxModel` contains submodels with separate data.  Here we fit a configural
+CFA on the Holzinger-Swineford visual subscale across two schools.
+
+```{r multigroup, eval=requireNamespace("umx", quietly=TRUE) && requireNamespace("lavaan", quietly=TRUE) && isTRUE(fastsemR:::.fastsem_env$loaded)}
+library(lavaan, warn.conflicts = FALSE)
+hs <- HolzingerSwineford1939
+
+mg_p <- umxRAM("mg_p",
+  umxPath(from = "g", to = c("x1","x2","x3")),
+  umxPath(v1m0 = "g"),
+  umxPath(var   = c("x1","x2","x3")),
+  umxPath(means = c("x1","x2","x3")),
+  data = hs[hs$school == "Pasteur",     c("x1","x2","x3")]
+)
+mg_gw <- umxRAM("mg_gw",
+  umxPath(from = "g", to = c("x1","x2","x3")),
+  umxPath(v1m0 = "g"),
+  umxPath(var   = c("x1","x2","x3")),
+  umxPath(means = c("x1","x2","x3")),
+  data = hs[hs$school == "Grant-White", c("x1","x2","x3")]
+)
+
+r <- run_fastsem(mxModel("HS_mg", mg_p, mg_gw))
+
+cat("Pasteur loadings:\n")
+print(round(omxGetParameters(r@submodels$mg_p)[1:3], 3))
+cat("\nGrant-White loadings:\n")
+print(round(omxGetParameters(r@submodels$mg_gw)[1:3], 3))
+```
+
+The two schools produce similar but not identical loadings, consistent with
+approximate (not strict) metric invariance for this subscale.
+
+---
+
+## Next steps
+
+- See `vignette("behavior-genetics")` for ACE twin models and bivariate
+  Cholesky decompositions.
+- See `?fastsem_fit` for the full lavaan syntax reference including ordinal
+  variables, cluster-robust SEs, and definition variables.

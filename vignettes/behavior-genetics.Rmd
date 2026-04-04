@@ -1,0 +1,459 @@
+---
+title: "Behaviour genetics with fastsemR"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Behaviour genetics with fastsemR}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE, comment = "#>",
+  eval = requireNamespace("fastsemR", quietly = TRUE) &&
+         isTRUE(fastsemR:::.fastsem_env$loaded)
+)
+library(fastsemR)
+set.seed(42)
+```
+
+Behaviour genetics (BG) decomposes phenotypic variance into genetic and
+environmental components.  The most common designs use **twin data**, in
+which monozygotic (MZ) and dizygotic (DZ) pairs are compared.  Key premises:
+
+* MZ twins share 100% of their additive genetic variance → `rA(MZ) = 1`.
+* DZ twins share on average 50% → `rA(DZ) = 0.5`.
+* Both MZ and DZ twins raised together share the same family environment
+  → `rC = 1` in both groups.
+
+Under these assumptions a two-group SEM decomposes phenotypic variance into:
+
+| Component | Symbol | Meaning |
+|---|:---:|---|
+| Additive genetic | *A* | Heritability *h*² |
+| Shared environment | *C* | Environmentality *c*² |
+| Unique environment | *E* | Residual + measurement error |
+
+This vignette works entirely with **simulated** data so that the correct
+answer is known in advance.
+
+---
+
+## Helper: simulate twin data
+
+```{r sim-fn}
+# Simulate n MZ + n DZ twin pairs for a single phenotype.
+# h2, c2, e2 are the true variance components (must sum to 1).
+sim_twins <- function(n_pairs, h2 = 0.5, c2 = 0.2) {
+  e2 <- 1 - h2 - c2
+  stopifnot(e2 > 0)
+  a <- sqrt(h2);  cc <- sqrt(c2);  e <- sqrt(e2)
+
+  # MZ: identical A factor
+  A_mz  <- rnorm(n_pairs)
+  C_mz  <- rnorm(n_pairs)
+  mz <- data.frame(
+    T1 = a*A_mz  + cc*C_mz  + e*rnorm(n_pairs),
+    T2 = a*A_mz  + cc*C_mz  + e*rnorm(n_pairs),
+    zyg = "MZ"
+  )
+
+  # DZ: A factors correlated at 0.5
+  A_dz1 <- rnorm(n_pairs)
+  A_dz2 <- 0.5*A_dz1 + sqrt(1 - 0.5^2)*rnorm(n_pairs)
+  C_dz  <- rnorm(n_pairs)
+  dz <- data.frame(
+    T1 = a*A_dz1 + cc*C_dz + e*rnorm(n_pairs),
+    T2 = a*A_dz2 + cc*C_dz + e*rnorm(n_pairs),
+    zyg = "DZ"
+  )
+
+  rbind(mz, dz)
+}
+
+# Intraclass correlations as a quick sanity check
+icc <- function(d) cor(d$T1, d$T2)
+twins <- sim_twins(500)   # 500 pairs per zygosity = 1 000 per group
+cat(sprintf("MZ ICC = %.3f   DZ ICC = %.3f\n",
+            icc(twins[twins$zyg=="MZ",]),
+            icc(twins[twins$zyg=="DZ",])))
+```
+
+The MZ intraclass correlation should be noticeably higher than the DZ ICC
+when *h*² > 0.  The difference `2(rMZ − rDZ)` is a quick heritability
+approximation (Falconer's formula).
+
+```{r falconer}
+r_mz <- icc(twins[twins$zyg == "MZ",])
+r_dz <- icc(twins[twins$zyg == "DZ",])
+cat(sprintf("Falconer h²  ≈ %.3f  (true = 0.50)\n", 2*(r_mz - r_dz)))
+cat(sprintf("Falconer c²  ≈ %.3f  (true = 0.20)\n", 2*r_dz - r_mz))
+```
+
+---
+
+## 1. Univariate ACE model
+
+### Model specification
+
+The ACE model uses **separate** additive genetic factors per twin (`A1`, `A2`),
+with equal path coefficients (`a`), and fixes the cross-twin genetic covariance
+to 1 for MZ pairs and 0.5 for DZ pairs using fastsem's per-group `c(1, 0.5)`
+annotation.  Shared environment (`C`) loads equally on both twins; unique
+environment (`E1`, `E2`) is twin-specific and uncorrelated across twins.
+
+The key identity for the expected covariance matrix is:
+
+| | *T1* | *T2* |
+|---|---|---|
+| *T1* | *a*² + *c*² + *e*² | *r*A·*a*² + *c*² |
+| *T2* | *r*A·*a*² + *c*² | *a*² + *c*² + *e*² |
+
+where *r*A = 1 (MZ) or 0.5 (DZ).
+
+```{r ace-syntax}
+ace_syntax <- "
+group: grp
+
+# Separate A factor per twin (equal path coefficients = equal heritability)
+A1 =~ a*T1
+A2 =~ a*T2
+
+# C loads on both twins equally (shared family environment)
+C  =~ c*T1 + c*T2
+
+# E factors are twin-specific (unique environment + measurement error)
+E1 =~ e*T1
+E2 =~ e*T2
+
+# All latent variances fixed to 1 (scale set by path coefficients)
+A1 ~~ 1*A1
+A2 ~~ 1*A2
+C  ~~ 1*C
+E1 ~~ 1*E1
+E2 ~~ 1*E2
+
+# Cross-twin genetic covariance: 1 for MZ, 0.5 for DZ
+A1 ~~ c(1, 0.5)*A2
+
+# All remaining latent covariances fixed to 0
+A1 ~~ 0*C;   A2 ~~ 0*C
+A1 ~~ 0*E1;  A1 ~~ 0*E2
+A2 ~~ 0*E1;  A2 ~~ 0*E2
+C  ~~ 0*E1;  C  ~~ 0*E2
+E1 ~~ 0*E2
+
+# Residuals fixed to zero (variance fully accounted for by ACE)
+T1 ~~ 0*T1
+T2 ~~ 0*T2
+
+# Means
+T1 ~ 1
+T2 ~ 1
+"
+```
+
+### Prepare stacked data with group column
+
+fastsemR multi-group models require all groups to be stacked in a single
+data frame with a numeric group indicator.
+
+```{r stack-data}
+mz_dat <- twins[twins$zyg == "MZ", c("T1","T2")];  mz_dat$grp <- 1L
+dz_dat <- twins[twins$zyg == "DZ", c("T1","T2")];  dz_dat$grp <- 2L
+all_dat <- rbind(mz_dat, dz_dat)
+cat("Rows:", nrow(all_dat), "  MZ:", sum(all_dat$grp==1), "  DZ:", sum(all_dat$grp==2), "\n")
+```
+
+### Fit and interpret
+
+```{r ace-fit}
+res_ace <- fastsem_fit(ace_syntax, all_dat)
+print_fastsem(res_ace)
+
+# Labeled parameters appear in paramNames under their label
+a_hat <- res_ace$estimates[res_ace$paramNames == "a"]
+c_hat <- res_ace$estimates[res_ace$paramNames == "c"]
+e_hat <- res_ace$estimates[res_ace$paramNames == "e"]
+
+cat(sprintf("\nVariance components:\n"))
+cat(sprintf("  h² (A) = %.3f   (true = 0.50)\n", a_hat^2))
+cat(sprintf("  c² (C) = %.3f   (true = 0.20)\n", c_hat^2))
+cat(sprintf("  e² (E) = %.3f   (true = 0.30)\n", e_hat^2))
+cat(sprintf("  sum    = %.3f\n", a_hat^2 + c_hat^2 + e_hat^2))
+```
+
+The estimates should closely recover the simulation parameters (*h*²=0.50,
+*c*²=0.20, *e*²=0.30) with 500 pairs per zygosity group.
+
+---
+
+## 2. AE model (drop C)
+
+The *C* component is often non-significant in adult twin samples.  We test
+this restricted model by removing the *C* factor entirely.  The difference
+in `df` (1) and `chi2` gives a likelihood-ratio test for *C*.
+
+```{r ae-model}
+ae_syntax <- "
+group: grp
+
+A1 =~ a*T1
+A2 =~ a*T2
+E1 =~ e*T1
+E2 =~ e*T2
+
+A1 ~~ 1*A1;  A2 ~~ 1*A2
+E1 ~~ 1*E1;  E2 ~~ 1*E2
+
+A1 ~~ c(1, 0.5)*A2
+A1 ~~ 0*E1;  A1 ~~ 0*E2
+A2 ~~ 0*E1;  A2 ~~ 0*E2
+E1 ~~ 0*E2
+
+T1 ~~ 0*T1
+T2 ~~ 0*T2
+T1 ~ 1
+T2 ~ 1
+"
+
+res_ae <- fastsem_fit(ae_syntax, all_dat)
+a_ae <- res_ae$estimates[res_ae$paramNames == "a"]
+e_ae <- res_ae$estimates[res_ae$paramNames == "e"]
+cat(sprintf("AE model:  h²=%.3f  e²=%.3f\n", a_ae^2, e_ae^2))
+
+# LRT: ACE vs AE
+delta_chi2 <- res_ae$chi2 - res_ace$chi2
+delta_df   <- res_ae$df   - res_ace$df
+p_lrt      <- pchisq(delta_chi2, df = delta_df, lower.tail = FALSE)
+cat(sprintf("LRT (drop C):  Δχ²=%.3f  Δdf=%d  p=%.4f\n",
+            delta_chi2, delta_df, p_lrt))
+```
+
+With data simulated from an ACE model (*c*²=0.20), the LRT for dropping *C*
+should be significant (p < 0.05) for large samples.
+
+---
+
+## 3. Bivariate ACE: cross-twin cross-phenotype correlations
+
+When two phenotypes are measured on the same twins, we can estimate the
+**genetic correlation** between them — the extent to which the same genes
+influence both traits.
+
+The bivariate Falconer approach uses four correlations:
+
+| Correlation | Symbol |
+|---|---|
+| MZ cross-twin, same phenotype | *r*MZ₁₁, *r*MZ₂₂ |
+| DZ cross-twin, same phenotype | *r*DZ₁₁, *r*DZ₂₂ |
+| MZ cross-twin cross-phenotype | *r*MZ₁₂ |
+| DZ cross-twin cross-phenotype | *r*DZ₁₂ |
+
+The **genetic correlation** between the two phenotypes is estimated as:
+
+`rG ≈ (rMZ₁₂ − rDZ₁₂) / √[(rMZ₁₁ − rDZ₁₁) · (rMZ₂₂ − rDZ₂₂)]`
+
+```{r bivariate-sim}
+# Simulate two phenotypes with shared genetic and environmental variance
+sim_bivar <- function(n, rA = 0.6, rC = 0.4, h1 = 0.5, h2 = 0.4,
+                      c1 = 0.2, c2 = 0.3) {
+  e1 <- sqrt(1 - h1 - c1)
+  e2 <- sqrt(1 - h2 - c2)
+  a1 <- sqrt(h1);   a2 <- sqrt(h2)
+  cc1 <- sqrt(c1);  cc2 <- sqrt(c2)
+
+  # Cholesky A: two orthogonal genetic factors
+  la11 <- a1;  la21 <- rA*a2;  la22 <- sqrt(1 - rA^2)*a2
+  # Cholesky C
+  lc11 <- cc1; lc21 <- rC*cc2; lc22 <- sqrt(1 - rC^2)*cc2
+
+  make_phenotypes <- function(Ag1, Ag2, Cf) {
+    p1 <- la11*Ag1 + lc11*Cf + e1*rnorm(n)
+    p2 <- la21*Ag1 + la22*Ag2 + lc21*Cf + lc22*rnorm(n) + e2*rnorm(n)
+    cbind(p1, p2)
+  }
+
+  # MZ
+  Ag1_mz <- rnorm(n);  Ag2_mz <- rnorm(n);  C_mz <- rnorm(n)
+  mz1 <- make_phenotypes(Ag1_mz, Ag2_mz, C_mz)
+  mz2 <- make_phenotypes(Ag1_mz, Ag2_mz, C_mz)  # same genes, same C
+
+  # DZ (A shared at 0.5)
+  Ag1_dz1 <- rnorm(n)
+  Ag1_dz2 <- 0.5*Ag1_dz1 + sqrt(0.75)*rnorm(n)
+  Ag2_dz1 <- rnorm(n)
+  Ag2_dz2 <- 0.5*Ag2_dz1 + sqrt(0.75)*rnorm(n)
+  C_dz    <- rnorm(n)
+  dz1 <- make_phenotypes(Ag1_dz1, Ag2_dz1, C_dz)
+  dz2 <- make_phenotypes(Ag1_dz2, Ag2_dz2, C_dz)
+
+  mz_df <- data.frame(P1_t1=mz1[,1], P2_t1=mz1[,2],
+                      P1_t2=mz2[,1], P2_t2=mz2[,2], grp=1L)
+  dz_df <- data.frame(P1_t1=dz1[,1], P2_t1=dz1[,2],
+                      P1_t2=dz2[,1], P2_t2=dz2[,2], grp=2L)
+  rbind(mz_df, dz_df)
+}
+
+biv <- sim_bivar(600)   # 600 pairs per zygosity
+mz  <- biv[biv$grp == 1, ]
+dz  <- biv[biv$grp == 2, ]
+cat(sprintf("P1 ICC: MZ=%.3f  DZ=%.3f\n",
+            cor(mz$P1_t1, mz$P1_t2), cor(dz$P1_t1, dz$P1_t2)))
+cat(sprintf("P2 ICC: MZ=%.3f  DZ=%.3f\n",
+            cor(mz$P2_t1, mz$P2_t2), cor(dz$P2_t1, dz$P2_t2)))
+```
+
+### Estimate correlations via fastsem saturated models
+
+We fit a saturated covariance model for each zygosity group using fastsem,
+then extract cross-twin correlations directly.
+
+```{r bivar-saturated}
+sat_syntax <- "
+  P1_t1 ~~ P1_t1 + P2_t1 + P1_t2 + P2_t2
+  P2_t1 ~~ P2_t1 + P1_t2 + P2_t2
+  P1_t2 ~~ P1_t2 + P2_t2
+  P2_t2 ~~ P2_t2
+  P1_t1 ~ 1;  P2_t1 ~ 1;  P1_t2 ~ 1;  P2_t2 ~ 1
+"
+
+res_mz <- fastsem_fit(sat_syntax, mz[, c("P1_t1","P2_t1","P1_t2","P2_t2")])
+res_dz <- fastsem_fit(sat_syntax, dz[, c("P1_t1","P2_t1","P1_t2","P2_t2")])
+
+# Helper to extract an estimate by structural parameter name
+gp <- function(res, nm) res$estimates[res$paramNames == nm]
+
+# Cross-twin correlations (from covariances + variances)
+var_mz  <- gp(res_mz, "Var(P1_t1)")
+r_mz11  <- gp(res_mz, "P1_t1~~P1_t2") / var_mz
+r_mz22  <- gp(res_mz, "P2_t1~~P2_t2") / gp(res_mz, "Var(P2_t1)")
+r_mz12  <- gp(res_mz, "P1_t1~~P2_t2") /
+           sqrt(var_mz * gp(res_mz, "Var(P2_t2)"))
+
+var_dz  <- gp(res_dz, "Var(P1_t1)")
+r_dz11  <- gp(res_dz, "P1_t1~~P1_t2") / var_dz
+r_dz22  <- gp(res_dz, "P2_t1~~P2_t2") / gp(res_dz, "Var(P2_t1)")
+r_dz12  <- gp(res_dz, "P1_t1~~P2_t2") /
+           sqrt(var_dz * gp(res_dz, "Var(P2_t2)"))
+
+cat(sprintf("Cross-twin P1:    rMZ=%.3f  rDZ=%.3f\n", r_mz11, r_dz11))
+cat(sprintf("Cross-twin P2:    rMZ=%.3f  rDZ=%.3f\n", r_mz22, r_dz22))
+cat(sprintf("Cross-twin CTCP:  rMZ=%.3f  rDZ=%.3f\n", r_mz12, r_dz12))
+```
+
+### Genetic correlation between phenotypes
+
+```{r bivar-rg}
+h1_est  <- 2*(r_mz11 - r_dz11)
+h2_est  <- 2*(r_mz22 - r_dz22)
+rG_est  <- (r_mz12 - r_dz12) / sqrt((r_mz11 - r_dz11) * (r_mz22 - r_dz22))
+
+cat(sprintf("h²(P1) = %.3f   (true = 0.50)\n", h1_est))
+cat(sprintf("h²(P2) = %.3f   (true = 0.40)\n", h2_est))
+cat(sprintf("rG     = %.3f   (true = 0.60)\n", rG_est))
+```
+
+The genetic correlation `rG` quantifies the extent to which the same genes
+influence both phenotypes.  Falconer's formula provides a consistent estimator;
+for formal inference a full bivariate Cholesky SEM (Neale & Cardon, 1992) should
+be preferred in practice.
+
+---
+
+## 4. Cross-lagged panel model (RI-CLPM)
+
+The **Random-Intercept Cross-Lagged Panel Model** (RI-CLPM; Hamaker et al.,
+2015) separates stable between-person differences (random intercepts) from
+within-person dynamics (cross-lagged paths).  We demonstrate with two waves
+of simulated panel data — no twin structure required.
+
+```{r riclpm-sim}
+# Simulate two-wave RI-CLPM data
+sim_riclpm <- function(n, beta_yx = 0.3, beta_xy = 0.1,
+                       sigma_Ri = 0.5, sigma_w = 0.6) {
+  RI_x <- rnorm(n, sd = sigma_Ri)
+  RI_y <- rnorm(n, sd = sigma_Ri) + 0.4 * RI_x  # correlated intercepts
+
+  wx1 <- rnorm(n, sd = sigma_w)
+  wy1 <- rnorm(n, sd = sigma_w) + 0.2 * wx1
+
+  wx2 <- 0.4*wx1 + beta_yx*wy1 + rnorm(n, sd = sigma_w * 0.7)
+  wy2 <- 0.4*wy1 + beta_xy*wx1 + rnorm(n, sd = sigma_w * 0.7)
+
+  data.frame(
+    x1 = RI_x + wx1,
+    y1 = RI_y + wy1,
+    x2 = RI_x + wx2,
+    y2 = RI_y + wy2
+  )
+}
+
+panel <- sim_riclpm(500)
+round(cor(panel), 3)
+```
+
+### RI-CLPM syntax
+
+```{r riclpm-syntax}
+riclpm_syntax <- "
+  # Random intercepts (unit loadings, fixed variances free)
+  RI_x =~ 1*x1 + 1*x2
+  RI_y =~ 1*y1 + 1*y2
+
+  # Within-person components
+  wx1 =~ 1*x1
+  wy1 =~ 1*y1
+  wx2 =~ 1*x2
+  wy2 =~ 1*y2
+
+  # Cross-lagged and autoregressive paths
+  wx2 ~ ax*wx1 + byx*wy1
+  wy2 ~ ay*wy1 + bxy*wx1
+
+  # Within-person variances / covariances
+  wx1 ~~ wx1;  wy1 ~~ wy1;  wx1 ~~ wy1
+  wx2 ~~ wx2;  wy2 ~~ wy2;  wx2 ~~ wy2
+
+  # Random intercept variances and covariance
+  RI_x ~~ RI_x;  RI_y ~~ RI_y;  RI_x ~~ RI_y
+
+  # Observed residuals fixed to zero
+  x1 ~~ 0*x1;  x2 ~~ 0*x2;  y1 ~~ 0*y1;  y2 ~~ 0*y2
+
+  # RI ⊥ within-person components at wave 1
+  RI_x ~~ 0*wx1;  RI_x ~~ 0*wy1;  RI_x ~~ 0*wx2;  RI_x ~~ 0*wy2
+  RI_y ~~ 0*wx1;  RI_y ~~ 0*wy1;  RI_y ~~ 0*wx2;  RI_y ~~ 0*wy2
+
+  # Means
+  x1 ~ 1;  y1 ~ 1;  x2 ~ 1;  y2 ~ 1
+"
+
+res_ri <- fastsem_fit(riclpm_syntax, panel)
+print_fastsem(res_ri)
+```
+
+```{r riclpm-extract}
+# Labeled parameters are accessed by their label in paramNames
+ge <- function(nm) res_ri$estimates[res_ri$paramNames == nm]
+cat(sprintf("ax  (AR x):        %.3f\n",              ge("ax")))
+cat(sprintf("ay  (AR y):        %.3f\n",              ge("ay")))
+cat(sprintf("byx (y -> x CL):  %.3f   (true = 0.30)\n", ge("byx")))
+cat(sprintf("bxy (x -> y CL):  %.3f   (true = 0.10)\n", ge("bxy")))
+```
+
+The cross-lagged paths `byx` and `bxy` represent within-person effects of
+*y* on *x* and *x* on *y* over time, after removing the confounding
+influence of the stable random intercepts.
+
+---
+
+## References
+
+* Falconer, D.S., & Mackay, T.F.C. (1996). *Introduction to Quantitative
+  Genetics* (4th ed.). Longman.
+* Hamaker, E.L., Kuiper, R.M., & Grasman, R.P.P.H. (2015). A critique of
+  the cross-lagged panel model. *Psychological Methods*, 20(1), 102–116.
+  <https://doi.org/10.1037/a0038889>
+* Neale, M.C., & Cardon, L.R. (1992). *Methodology for Genetic Studies of
+  Twins and Families*. Kluwer Academic.
