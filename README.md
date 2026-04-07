@@ -205,19 +205,4 @@ e²=0.30) with 500 pairs per zygosity.
 - [Behaviour genetics](vignettes/behavior-genetics.Rmd) —
   univariate ACE twin model, bivariate Cholesky, RI-CLPM.
 
----
 
-## Citation
-
-If you use fastsemR in published work, please cite the fastsem engine:
-
-```
-Araujo, L.F. (2026). fastsem: A fast SEM estimator with GPU support.
-https://github.com/lf-araujo/fastsem
-```
-
----
-
-## License
-
-MIT © Luis Araujo
