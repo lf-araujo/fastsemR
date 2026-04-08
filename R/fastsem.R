@@ -741,6 +741,16 @@ print_fastsem <- function(res) {
     fs_res = fs_res)
   model@output$estimate       <- out_estimates
   model@output$standardErrors <- se_mat
+
+  # Populate output$expected.means so that summary() displays the fitted means.
+  # fs_res$muHat is a named numeric vector (observed-variable order) returned
+  # by fitSemR; it holds (I-A)^{-1} alpha filtered to observed variables.
+  if (!is.null(fs_res$muHat) && length(fs_res$muHat) > 0) {
+    exp_means <- matrix(fs_res$muHat, nrow = 1L,
+                        dimnames = list(NULL, names(fs_res$muHat)))
+    model@output$expected.means <- exp_means
+  }
+
   model@.wasRun              <- TRUE
   model@.modifiedSinceRun    <- FALSE
   model

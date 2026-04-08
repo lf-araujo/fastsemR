@@ -8,9 +8,10 @@
 #' subsequent calls (including package startup via [`.onLoad`]).
 #'
 #' Platform detection is automatic:
-#' * Linux x86-64  → `libfastsem_r_linux_x86_64.so`
-#' * macOS x86-64  → `libfastsem_r_macos_x86_64.dylib`
-#' * macOS arm64   → `libfastsem_r_macos_arm64.dylib`
+#' * Linux x86-64  → `libfastsem_r-linux-x86_64.so`
+#' * macOS x86-64  → `libfastsem_r-macos-x86_64.dylib`
+#' * macOS arm64   → `libfastsem_r-macos-arm64.dylib`
+#' * Windows x64   → `libfastsem_r-windows-x64.dll`
 #'
 #' @param force Logical (default `FALSE`).  When `TRUE`, re-download even if a
 #'   cached binary already exists.  Use after a new fastsem release.

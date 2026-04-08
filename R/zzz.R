@@ -11,10 +11,11 @@
   os   <- Sys.info()[["sysname"]]
   arch <- Sys.info()[["machine"]]   # "x86_64" or "arm64" / "aarch64"
   arch_tag <- if (grepl("arm|aarch", arch, ignore.case = TRUE)) "arm64" else "x86_64"
+  win_arch  <- if (grepl("arm|aarch", arch, ignore.case = TRUE)) "arm64" else "x64"
   switch(os,
-    Linux   = sprintf("libfastsem_r_linux_%s.so",    arch_tag),
-    Darwin  = sprintf("libfastsem_r_macos_%s.dylib", arch_tag),
-    Windows = sprintf("libfastsem_r_windows_%s.dll", arch_tag),
+    Linux   = sprintf("libfastsem_r-linux-%s.so",    arch_tag),
+    Darwin  = sprintf("libfastsem_r-macos-%s.dylib", arch_tag),
+    Windows = sprintf("libfastsem_r-windows-%s.dll", win_arch),
     stop("fastsem: unsupported OS '", os, "'")
   )
 }
@@ -39,7 +40,7 @@
 
   if (!force && file.exists(dest)) return(dest)
 
-  base_url <- "https://github.com/lf-araujo/fastsem/releases/latest/download"
+  base_url <- "https://github.com/lf-araujo/fastsemR/releases/download/0.1"
   url      <- paste0(base_url, "/", filename)
 
   message("fastsem: downloading binary\n  ", url)
