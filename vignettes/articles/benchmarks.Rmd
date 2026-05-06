@@ -1,0 +1,52 @@
+---
+title: "Benchmarks"
+description: >
+  Wall-clock timings for representative SEM workloads, comparing
+  fastsem to OpenMx, lavaan, and Mplus.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+The numbers below are wall-clock timings on commodity hardware.  Models
+that a given tool cannot fit at all are marked accordingly.  Treat the
+figures as order-of-magnitude rather than precise micro-benchmarks —
+they will move with hardware, BLAS choice, and convergence tolerance.
+
+## Representative workloads
+
+| Model                          |        N         |  fastsem  |  OpenMx  |       lavaan      |  Mplus  |
+|--------------------------------|:----------------:|:---------:|:--------:|:-----------------:|:-------:|
+| Bivariate FIML, ordinal        |     5,000        |   ~3 s    |  ~45 s   | DWLS only         |  ~20 s  |
+| ACE twin model (FIML)          |   1,000 pairs    |   ~1 s    |  ~10 s   | no ACE            |   ~4 s  |
+| RI-CLPM, 4 waves, ordinal      |     3,000        |   ~8 s    |  ~90 s   | no FIML ordinal   |  ~30 s  |
+| Gen-SEM scan                   |   500k SNPs      |  ~50 min  |  ~20 h   | not supported     | not sup |
+
+## Why fastsem is fast
+
+- **Analytical gradients.** Exact ML and FIML gradients are computed via
+  the RAM weight matrix, not by finite differences.
+- **OpenCL float32 objective.** The objective function is evaluated on
+  the GPU when available; the float64 analytical gradient runs on CPU.
+- **Multi-threaded CPU fallback.** When no GPU is detected, the same
+  objective runs on multiple cores via OpenMP-style parallelism.
+- **Warm-starting.** For Gen-SEM-style sweeps, each SNP fit reuses the
+  previous solution, yielding roughly a 20× speed-up over cold starts.
+- **L-BFGS with preconditioner and mini-batch warmup.** Faster
+  convergence on stiff likelihoods than naive quasi-Newton.
+
+## Reproducing these numbers
+
+Reproduction scripts live in the
+[fastsem engine repository](https://github.com/lf-araujo/fastsem) under
+`benchmarks/`.  The R-side counterparts (using `run_fastsem()` against
+equivalent OpenMx and lavaan models) will be packaged in a future
+revision of fastsemR.
+
+For everyday R workloads, the easiest way to spot the speedup is to
+take an existing umx/OpenMx model and swap `mxRun()` for
+`run_fastsem()` — see the [getting started article](../getting-started.html).

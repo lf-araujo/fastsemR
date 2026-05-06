@@ -1,0 +1,88 @@
+url: https://lf-araujo.github.io/fastsemR/
+
+template:
+  bootstrap: 5
+  bootswatch: cosmo
+  bslib:
+    primary: "#1f4e79"
+    base_font: {google: "Source Sans Pro"}
+    heading_font: {google: "Source Sans Pro"}
+    code_font: {google: "JetBrains Mono"}
+
+home:
+  title: "fastsemR — R interface to the fastsem SEM engine"
+  description: >
+    R bindings to fastsem, a compiled Nim SEM engine supporting ML, FIML,
+    DWLS / WLSMV, multi-group models, definition variables, equality
+    constraints, derived parameters, and cluster-robust standard errors.
+
+navbar:
+  structure:
+    left:  [intro, reference, articles, comparison, benchmarks, news]
+    right: [search, github]
+  components:
+    intro:
+      text: Get started
+      href: articles/getting-started.html
+    articles:
+      text: Articles
+      menu:
+      - text: Getting started
+        href: articles/getting-started.html
+      - text: Behaviour genetics
+        href: articles/behavior-genetics.html
+      - text: State-space models
+        href: articles/state-space-models.html
+      - text: -------
+      - text: "About fastsem"
+      - text: Comparison with other SEM software
+        href: articles/comparison.html
+      - text: Benchmarks
+        href: articles/benchmarks.html
+      - text: Roadmap
+        href: articles/roadmap.html
+    comparison:
+      text: Comparison
+      href: articles/comparison.html
+    benchmarks:
+      text: Benchmarks
+      href: articles/benchmarks.html
+
+reference:
+- title: "Fitting models from lavaan syntax"
+  desc: "Fit fastsem models directly from lavaan-style syntax."
+  contents:
+  - fastsem_fit
+  - fastsem_sem_vars
+  - print_fastsem
+
+- title: "umx / OpenMx bridge"
+  desc: "Translate umx / OpenMx RAM models and inject estimates back."
+  contents:
+  - run_fastsem
+  - run_fastsem_ram
+  - umx_to_lavaan
+  - umx_to_fastsem
+
+- title: "Library management"
+  desc: "Download, update, and load the compiled fastsem shared library."
+  contents:
+  - fastsem_install
+  - fastsem_update
+  - fastsem_load
+
+articles:
+- title: Tutorials
+  navbar: ~
+  contents:
+  - getting-started
+  - behavior-genetics
+  - state-space-models
+- title: About fastsem
+  desc: >
+    Background on the fastsem engine — how it compares to other SEM
+    software, performance numbers, and what is coming next.
+  contents:
+  - articles/comparison
+  - articles/benchmarks
+  - articles/roadmap

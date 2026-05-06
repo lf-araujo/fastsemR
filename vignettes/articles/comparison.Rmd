@@ -1,0 +1,62 @@
+---
+title: "Comparison with other SEM software"
+description: >
+  How fastsem compares to Mplus, OpenMx, lavaan, and Stan across the
+  capabilities that matter for genomic, longitudinal, and ordinal SEM.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+The fastsem engine was built to handle workloads where existing
+SEM tools either cannot run the model at all or are impractically
+slow.  The matrix below summarises the differences across the
+features that motivated its development.
+
+## Feature matrix
+
+| Feature                              | fastsem | Mplus | OpenMx | lavaan | Stan |
+|--------------------------------------|:-------:|:-----:|:------:|:------:|:----:|
+| Native IV / MR (Gen-SEM)             |    ✓    |   ~   |    ✓   |    ✗   |   ~  |
+| State-space / Kalman (SSM)           |    ✓    |   ✗   |    ✓   |    ✗   |   ~  |
+| Ordinal thresholds + FIML            |    ✓    |   ✓   |    ✓   |    ~   |   ~  |
+| GPU acceleration (OpenCL)            |    ✓    |   ✗   |    ✗   |    ✗   |   ~  |
+| R interface                          |    ✓    |   ✗   |    ✓   |    ✓   |   ✓  |
+| Multi-group + cluster-robust SEs     |    ✓    |   ✓   |    ✓   |    ✓   |   ✗  |
+| PLINK binary + VCF streaming         |    ✓    |   ✗   |    ✗   |    ✗   |   ✗  |
+
+`✓` = supported natively, `~` = partial / requires manual work,
+`✗` = not available.
+
+## When fastsem is the right tool
+
+- **Genomic SEM at scale.** Streaming PLINK/VCF input plus warm-started
+  per-SNP fits make genome-wide SEM scans tractable on a single workstation.
+- **Mendelian randomisation / IV inside an SEM.** Native IV support via
+  lavaan-style regression syntax, with no separate two-stage code.
+- **Ordinal indicators with missing data.** Polychoric correlations + DWLS,
+  combined with FIML for incomplete patterns.
+- **State-space / Kalman models.** GPU-accelerated Kalman filter for
+  latent-trajectory and continuous-time models.
+- **Definition variables.** Per-row parameters fit via FIML, useful for
+  twin/family designs and individually varying loadings.
+
+## When another tool may be a better fit
+
+- **Bayesian SEM with custom priors:** use Stan or OpenMx's MCMC backend
+  until fastsem's NUTS sampler lands (see [the roadmap](roadmap.html)).
+- **Mature ecosystem of plotting / `semTools`-style diagnostics:** lavaan
+  has the deepest set of post-processing utilities.
+
+## Honest caveats
+
+The comparison above reflects each tool's *out-of-the-box* capability.
+With sufficient custom code most tasks can be expressed in any of these
+systems; the matrix is about what comes for free.
+
+See the [benchmarks article](benchmarks.html) for wall-clock numbers
+on representative workloads.

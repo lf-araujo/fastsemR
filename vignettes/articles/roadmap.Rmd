@@ -1,0 +1,50 @@
+---
+title: "Roadmap"
+description: >
+  Planned capabilities for the fastsem engine and the fastsemR package.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+The list below tracks features actively planned for the fastsem
+engine and the R interface.  Priorities are influenced by issues
+filed against
+[fastsemR](https://github.com/lf-araujo/fastsemR/issues) and
+[fastsem](https://github.com/lf-araujo/fastsem/issues).
+
+## Engine
+
+- **macOS binaries** (arm64 and x86-64) using the Apple Accelerate
+  framework for BLAS / LAPACK.
+- **Python bindings via nimpy**, with a thin layer for JAX / PyTorch
+  interoperability.
+- **Full GPU FIML gradient** for large-N models with definition
+  variables, lifting the current CPU-side gradient bottleneck.
+- **Additional fit indices** — RMSEA, CFI, TLI, SRMR — alongside the
+  existing chi-square and information criteria.
+- **Bayesian SEM** with an HMC / NUTS posterior sampler.
+- **VCF streaming** for biobank-scale Gen-SEM scans that exceed
+  current memory limits.
+
+## R package (fastsemR)
+
+- **Bundled benchmark suite** so users can reproduce the
+  [comparison numbers](benchmarks.html) on their own hardware.
+- **Tighter `umx::umxSummary()` integration** for derived parameters
+  and standardised effects.
+- **Convenience helpers** for common Gen-SEM workflows (PLINK input,
+  per-SNP result tables).
+- **CRAN release** once the engine binary ships for all three
+  major platforms.
+
+## Have a request?
+
+Open an issue at
+<https://github.com/lf-araujo/fastsemR/issues>
+or, for engine-side questions,
+<https://github.com/lf-araujo/fastsem/issues>.

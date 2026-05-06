@@ -10,3 +10,5 @@ inst/doc
 /vignettes/*.pdf
 /man/*.Rd
 CRAN-SUBMISSION
+docs
+inst/doc

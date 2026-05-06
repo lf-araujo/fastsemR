@@ -14,8 +14,8 @@ Description: Provides R bindings to the fastsem structural equation modelling
     all supported. The compiled binary is downloaded automatically from
     GitHub Releases on first use.
 License: MIT + file LICENSE
-URL: https://github.com/lf-araujo/fastsem
-BugReports: https://github.com/lf-araujo/fastsem/issues
+URL: https://github.com/lf-araujo/fastsemR, https://lf-araujo.github.io/fastsemR/
+BugReports: https://github.com/lf-araujo/fastsemR/issues
 Imports:
     utils,
     tools
