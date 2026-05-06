@@ -14,7 +14,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 <!-- badges: end -->
 
-**fastsemR** is an R interface to [fastsem](https://github.com/lf-araujo/fastsem), a compiled Nim SEM engine that supports:
+**fastsemR** is an R interface to fastsem, a compiled Nim SEM engine that supports:
 
 - **ML** (full-data maximum likelihood) with analytical gradient and optional GPU acceleration
 - **FIML** (full-information ML for missing data and definition variables)
