@@ -2,19 +2,6 @@ url: https://lf-araujo.github.io/fastsemR/
 
 template:
   bootstrap: 5
-  bootswatch: cosmo
-  bslib:
-    primary: "#1f4e79"
-    base_font: {google: "Source Sans Pro"}
-    heading_font: {google: "Source Sans Pro"}
-    code_font: {google: "JetBrains Mono"}
-
-home:
-  title: "fastsemR — R interface to the fastsem SEM engine"
-  description: >
-    R bindings to fastsem, a compiled Nim SEM engine supporting ML, FIML,
-    DWLS / WLSMV, multi-group models, definition variables, equality
-    constraints, derived parameters, and cluster-robust standard errors.
 
 navbar:
   structure:
