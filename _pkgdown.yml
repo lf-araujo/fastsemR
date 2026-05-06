@@ -3,17 +3,27 @@ url: https://lf-araujo.github.io/fastsemR/
 template:
   bootstrap: 5
 
+# Home sidebar (matches the BGmisc / r-lib default layout).
+# pkgdown 2.x will only render each block when the underlying source
+# exists: `links` reads DESCRIPTION URL/BugReports, `community` is
+# auto-built from CONTRIBUTING.md / CODE_OF_CONDUCT.md / SUPPORT.md
+# at the repo root, `citation` reads inst/CITATION or the README's
+# "Citation" h2, `license` reads DESCRIPTION License, `authors` reads
+# DESCRIPTION Authors@R, and `dev` shows the development badge when
+# the version sorts before a release.
+home:
+  sidebar:
+    structure: [links, license, community, citation, authors, dev]
+
 navbar:
   structure:
-    left:  [intro, reference, articles, comparison, benchmarks, news]
+    left:  [reference, articles, news]
     right: [search, github]
   components:
-    intro:
-      text: Get started
-      href: articles/getting-started.html
     articles:
       text: Articles
       menu:
+      - text: "Tutorials"
       - text: Getting started
         href: articles/getting-started.html
       - text: Behaviour genetics
@@ -28,12 +38,6 @@ navbar:
         href: articles/benchmarks.html
       - text: Roadmap
         href: articles/roadmap.html
-    comparison:
-      text: Comparison
-      href: articles/comparison.html
-    benchmarks:
-      text: Benchmarks
-      href: articles/benchmarks.html
 
 reference:
 - title: "Fitting models from lavaan syntax"
