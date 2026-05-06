@@ -4,7 +4,6 @@
 # Repository setup:
 #   Settings → Pages → Build and deployment → Source: "GitHub Actions"
 name: pkgdown
-
 on:
   push:
     branches: [main, master]
@@ -36,10 +35,7 @@ jobs:
 
       - name: Install OpenMx
         shell: Rscript {0}
-        run: |
-          if (!requireNamespace("OpenMx", quietly = TRUE)) {
-            source("https://vsp.uoregon.edu/svn/OpenMx/trunk/inst/tools/install.OpenMx.R")
-          }
+        run: install.packages("OpenMx")
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
