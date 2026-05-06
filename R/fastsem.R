@@ -1,5 +1,33 @@
 ## fastsem.R — core SEM fitting and umx/OpenMx bridge
 
+# ── FIML LBFGS control helper ────────────────────────────────────────────────
+#
+# `control` is a named list with optional fields:
+#   maxIter   integer   max LBFGS iterations (default 2000 in core)
+#   tol       numeric   gradient-norm tolerance (default 1e-6)
+#   ftol      numeric   objective-change tolerance (default 1e-5)
+#   tryHard   integer   extra retry rounds on non-convergence; each round
+#                       multiplies maxIter by 3 and divides tol by 10.
+#                       0 = no retry.
+#
+# Use `tryHard >= 1` for behavior analogous to OpenMx's `mxTryHard`.
+# Returned: numeric(4) — the wire format consumed by the Nim ingester
+# (`applyFimlControl` in rnim_api.nim).  Length-0 means "all defaults".
+.fastsem_control_vec <- function(control) {
+  if (is.null(control) || length(control) == 0L) return(numeric(0))
+  if (!is.list(control))
+    stop("fastsem control must be a named list")
+  pick <- function(nm, default) {
+    v <- control[[nm]]
+    if (is.null(v)) return(default)
+    as.numeric(v[1])
+  }
+  c(pick("maxIter", 0),
+    pick("tol",     0),
+    pick("ftol",    0),
+    pick("tryHard", 0))
+}
+
 # ── Low-level fit wrapper ──────────────────────────────────────────────────────
 
 #' Fit a structural equation model from lavaan syntax.
@@ -99,7 +127,7 @@
 #' cat("Indirect hp->wt->mpg:", res2$estimates[res2$paramNames == "ab"],
 #'     "+/-", res2$se[res2$paramNames == "ab"], "\n")
 #' }
-fastsem_fit <- function(syntax, data, col_names = NULL) {
+fastsem_fit <- function(syntax, data, col_names = NULL, control = list()) {
   if (!isTRUE(.fastsem_env$loaded))
     stop("fastsem native library is not loaded. ",
          "Run fastsem_install() or fastsem_load().")
@@ -109,8 +137,9 @@ fastsem_fit <- function(syntax, data, col_names = NULL) {
   if (is.null(col_names) || length(col_names) != ncol(mat))
     stop("fastsem_fit: col_names length must equal the number of data columns")
 
+  ctl <- .fastsem_control_vec(control)
   sym <- getNativeSymbolInfo("fitSemR", .fastsem_env$dll_handle)
-  .Call(sym, as.character(syntax)[1], mat, as.character(col_names))
+  .Call(sym, as.character(syntax)[1], mat, as.character(col_names), ctl)
 }
 
 #' Extract observed variable names referenced by a lavaan syntax string.
@@ -435,17 +464,34 @@ umx_to_lavaan <- function(model, include_map = FALSE) {
 #'    `umxCompare()` work as if `mxRun()` had been called.
 #'
 #' @section Multi-group models:
-#' When `model@submodels` is non-empty, [run_fastsem()] stacks the data from
-#' all submodels with a `fastsem_grp` group indicator, builds a combined
-#' lavaan syntax with `c()` per-group annotations (see [fastsem_fit()]),
-#' fits the joint model, and injects per-group estimates back into each
-#' submodel.  Parameters that carry the same OpenMx label in all submodels
-#' are equated (metric invariance for that parameter); others are
-#' group-specific (configural).
+#' When `model@submodels` is non-empty, [run_fastsem()] fits the joint
+#' multi-group model and injects per-group estimates back into each submodel.
+#' Two engines are available (selected via `engine`):
+#' * **`"ram"`** (default for multi-group) sends the OpenMx RAM matrices
+#'   (A, S, optionally M) directly to fastsem's Nim core via
+#'   `fitSemFromMatricesMultigroupR`.  This bypasses the lavaan-syntax
+#'   round-trip and honors cross-group fixed covariances exactly (e.g.
+#'   cross-twin A=1.0 in MZ vs 0.5 in DZ).
+#' * **`"lavaan"`** stacks data with a `fastsem_grp` indicator, builds a
+#'   combined lavaan syntax with `c()` per-group annotations, and fits via
+#'   [fastsem_fit()].  Use this when the RAM engine errors on a model that
+#'   uses features it does not yet support (definition variables, ordinal
+#'   thresholds, configural cross-group different-label free parameters).
+#' Parameters that carry the same OpenMx label in all submodels are equated;
+#' others are group-specific.
 #'
 #' @param model An `MxModel` as returned by `umxRAM()` (or a bare `mxModel`
 #'   container holding submodels for multi-group use).  The model must have
 #'   raw (row-level) data in `model@data@observed`.
+#' @param control Optional named list passed to the optimizer.  Recognized
+#'   fields: `maxIter` (int), `tol` (gradient-norm tolerance),
+#'   `ftol` (objective-change tolerance), `tryHard` (extra retry rounds on
+#'   non-convergence; each round multiplies `maxIter` by 3 and divides `tol`
+#'   by 10).  Any field absent or `0`/`0.0` uses the core default.
+#' @param engine One of `"auto"`, `"ram"`, `"lavaan"`.  For multi-group
+#'   models, `"auto"` selects the RAM engine.  For single-group models, the
+#'   lavaan engine is always used (RAM single-group is not yet wired in the
+#'   R wrapper).
 #'
 #' @return The same `MxModel` object with:
 #' \describe{
@@ -500,63 +546,263 @@ umx_to_lavaan <- function(model, include_map = FALSE) {
 #' r <- run_fastsem(mxModel("HS_mg", mg_p, mg_gw))
 #' omxGetParameters(r@submodels$mg_p)
 #' }
-run_fastsem <- function(model) {
+run_fastsem <- function(model, control = list(),
+                        engine = c("auto", "ram", "lavaan")) {
   if (!requireNamespace("OpenMx", quietly = TRUE))
     stop("The 'OpenMx' package is required for run_fastsem().")
   if (!isTRUE(.fastsem_env$loaded))
     stop("fastsem native library is not loaded. ",
          "Run fastsem_install() or fastsem_load().")
+  engine <- match.arg(engine)
 
   is_multigroup <- length(model@submodels) > 0
 
-  if (is_multigroup) {
-    sub_names    <- names(model@submodels)
-    nGroups      <- length(sub_names)
-    grp_col_name <- "fastsem_grp"
-
-    grp_data_list <- vector("list", nGroups)
-    for (gi in seq_along(sub_names)) {
-      gdat <- .extract_model_data(model@submodels[[sub_names[gi]]])
-      gdat[[grp_col_name]] <- gi
-      grp_data_list[[gi]] <- gdat
-    }
-    stacked_data <- do.call(rbind, grp_data_list)
-
-    lav_syntax <- .umx_multigroup_lavaan(model@submodels, sub_names, grp_col_name)
-    col_names  <- colnames(stacked_data)
-    fs_res     <- fastsem_fit(lav_syntax, stacked_data, col_names)
-
-    for (gi in seq_along(sub_names)) {
-      sub      <- model@submodels[[sub_names[gi]]]
-      lav_info <- umx_to_lavaan(sub, include_map = TRUE)
-      g_res    <- fs_res
-      if (length(fs_res$groupEstimates) >= gi)
-        g_res$estimates <- fs_res$groupEstimates[[gi]]
-      if (length(fs_res$groupSEs) >= gi)
-        g_res$se <- fs_res$groupSEs[[gi]]
-      model@submodels[[sub_names[gi]]] <-
-        .inject_fastsem_into_model(sub, g_res, lav_info$param_map)
-    }
-
-    model <- .populate_model_output(model,
-      neg2logL = fs_res$neg2logL %||% NA_real_,
-      chi2     = fs_res$chi2     %||% NA_real_,
-      df       = fs_res$df       %||% NA_integer_,
-      fs_res   = fs_res)
-    model@.wasRun           <- TRUE
-    model@.modifiedSinceRun <- FALSE
-
-  } else {
-    data      <- .extract_model_data(model)
-    lav_info  <- umx_to_lavaan(model, include_map = TRUE)
-    col_names <- colnames(data)
-    if (is.null(col_names))
-      stop("run_fastsem: data must have column names")
-    fs_res <- fastsem_fit(lav_info$syntax, data, col_names)
-    model  <- .inject_fastsem_into_model(model, fs_res, lav_info$param_map)
+  if (!is_multigroup) {
+    if (engine == "ram")
+      stop("run_fastsem(engine = 'ram'): single-group RAM dispatch is not ",
+           "yet wired in the R wrapper. Use engine = 'auto' or 'lavaan'.")
+    return(.run_fastsem_lavaan_sg(model, control))
   }
 
+  # Multi-group: default to RAM unless caller forced lavaan.
+  if (engine == "lavaan")
+    return(.run_fastsem_lavaan_mg(model, control))
+  .run_fastsem_ram_mg(model, control)
+}
+
+# ── Multi-group lavaan engine ────────────────────────────────────────────────
+.run_fastsem_lavaan_mg <- function(model, control) {
+  sub_names    <- names(model@submodels)
+  nGroups      <- length(sub_names)
+  grp_col_name <- "fastsem_grp"
+
+  grp_data_list <- vector("list", nGroups)
+  for (gi in seq_along(sub_names)) {
+    gdat <- .extract_model_data(model@submodels[[sub_names[gi]]])
+    gdat[[grp_col_name]] <- gi
+    grp_data_list[[gi]] <- gdat
+  }
+  stacked_data <- do.call(rbind, grp_data_list)
+
+  lav_syntax <- .umx_multigroup_lavaan(model@submodels, sub_names, grp_col_name)
+  col_names  <- colnames(stacked_data)
+  fs_res     <- fastsem_fit(lav_syntax, stacked_data, col_names, control = control)
+
+  for (gi in seq_along(sub_names)) {
+    sub      <- model@submodels[[sub_names[gi]]]
+    lav_info <- umx_to_lavaan(sub, include_map = TRUE)
+    g_res    <- fs_res
+    if (length(fs_res$groupEstimates) >= gi)
+      g_res$estimates <- fs_res$groupEstimates[[gi]]
+    if (length(fs_res$groupSEs) >= gi)
+      g_res$se <- fs_res$groupSEs[[gi]]
+    model@submodels[[sub_names[gi]]] <-
+      .inject_fastsem_into_model(sub, g_res, lav_info$param_map)
+  }
+
+  model <- .populate_model_output(model,
+    neg2logL = fs_res$neg2logL %||% NA_real_,
+    chi2     = fs_res$chi2     %||% NA_real_,
+    df       = fs_res$df       %||% NA_integer_,
+    fs_res   = fs_res)
+  model@.wasRun           <- TRUE
+  model@.modifiedSinceRun <- FALSE
   model
+}
+
+# ── Single-group lavaan engine ───────────────────────────────────────────────
+.run_fastsem_lavaan_sg <- function(model, control) {
+  data      <- .extract_model_data(model)
+  lav_info  <- umx_to_lavaan(model, include_map = TRUE)
+  col_names <- colnames(data)
+  if (is.null(col_names))
+    stop("run_fastsem: data must have column names")
+  fs_res <- fastsem_fit(lav_info$syntax, data, col_names, control = control)
+  .inject_fastsem_into_model(model, fs_res, lav_info$param_map)
+}
+
+# ── Multi-group RAM engine ───────────────────────────────────────────────────
+# Bypasses the lavaan syntax translation: extracts each submodel's RAM
+# matrices (A, S, optionally M) with @free flags and @labels, packs them into
+# flat group-major vectors, and calls fitSemFromMatricesMultigroupR.
+# Cross-group equality is conveyed by shared OpenMx labels (auto-detected);
+# per-group fixed values that differ across groups (e.g. the cross-twin A
+# correlation fixed at 1.0 in MZ vs 0.5 in DZ for ACE/Cp twin models) flow
+# through directly without `c()` annotations.
+#
+# v1 restrictions (mirroring the Nim ingester):
+# • Same RAM structure across groups: a position is free in every group or
+#   fixed in every group.
+# • Free parameters equated across groups must share the OpenMx label.
+# • No definition variables, no ordinal thresholds.
+.run_fastsem_ram_mg <- function(model, control) {
+  sub_names <- names(model@submodels)
+  if (length(sub_names) < 2)
+    stop("RAM engine requires ≥2 submodels.")
+  nG <- length(sub_names)
+
+  ref_sub  <- model@submodels[[sub_names[1]]]
+  lat_vars <- ref_sub@latentVars
+  man_vars <- ref_sub@manifestVars
+  nLat     <- length(lat_vars)
+  nObs     <- length(man_vars)
+  p        <- nLat + nObs
+  canonical_vars <- c(lat_vars, man_vars)
+
+  for (gi in seq_along(sub_names)) {
+    sub <- model@submodels[[sub_names[gi]]]
+    if (!setequal(sub@latentVars,   lat_vars) ||
+        !setequal(sub@manifestVars, man_vars))
+      stop("run_fastsem_ram(): submodel '", sub_names[gi],
+           "' has different latent/manifest vars from reference submodel '",
+           sub_names[1], "'")
+  }
+
+  has_M <- "M" %in% names(ref_sub@matrices)
+
+  aVals <- numeric(p * p * nG); aFree <- logical(p * p * nG); aLabs <- character(p * p * nG)
+  sVals <- numeric(p * p * nG); sFree <- logical(p * p * nG); sLabs <- character(p * p * nG)
+  if (has_M) {
+    mVals <- numeric(p * nG); mFree <- logical(p * nG); mLabs <- character(p * nG)
+  } else {
+    mVals <- numeric(0); mFree <- logical(0); mLabs <- character(0)
+  }
+
+  # Bounds — group-0 only (umx applies bounds identically across groups).
+  # NaN in any cell means "unbounded on that side"; both sides NaN = no bound.
+  A_ref <- ref_sub@matrices$A
+  S_ref <- ref_sub@matrices$S
+  aLbound <- as.numeric(A_ref@lbound[canonical_vars, canonical_vars, drop = FALSE])
+  aUbound <- as.numeric(A_ref@ubound[canonical_vars, canonical_vars, drop = FALSE])
+  sLbound <- as.numeric(S_ref@lbound[canonical_vars, canonical_vars, drop = FALSE])
+  sUbound <- as.numeric(S_ref@ubound[canonical_vars, canonical_vars, drop = FALSE])
+  if (has_M) {
+    M_ref   <- ref_sub@matrices$M
+    mLbound <- as.numeric(M_ref@lbound[1, canonical_vars, drop = TRUE])
+    mUbound <- as.numeric(M_ref@ubound[1, canonical_vars, drop = TRUE])
+  } else {
+    mLbound <- numeric(0); mUbound <- numeric(0)
+  }
+
+  for (gi in seq_along(sub_names)) {
+    sub <- model@submodels[[sub_names[gi]]]
+    A   <- sub@matrices$A
+    S   <- sub@matrices$S
+
+    A_vals <- A@values [canonical_vars, canonical_vars, drop = FALSE]
+    A_free <- A@free   [canonical_vars, canonical_vars, drop = FALSE]
+    A_labs <- A@labels [canonical_vars, canonical_vars, drop = FALSE]
+    A_labs[is.na(A_labs)] <- ""
+
+    S_vals <- S@values [canonical_vars, canonical_vars, drop = FALSE]
+    S_free <- S@free   [canonical_vars, canonical_vars, drop = FALSE]
+    S_labs <- S@labels [canonical_vars, canonical_vars, drop = FALSE]
+    S_labs[is.na(S_labs)] <- ""
+
+    g_off <- (gi - 1L) * p * p
+    aVals[g_off + seq_len(p * p)] <- as.numeric(A_vals)
+    aFree[g_off + seq_len(p * p)] <- as.logical(A_free)
+    aLabs[g_off + seq_len(p * p)] <- as.character(A_labs)
+    sVals[g_off + seq_len(p * p)] <- as.numeric(S_vals)
+    sFree[g_off + seq_len(p * p)] <- as.logical(S_free)
+    sLabs[g_off + seq_len(p * p)] <- as.character(S_labs)
+
+    if (has_M) {
+      M <- sub@matrices$M
+      M_vals <- M@values[1, canonical_vars, drop = TRUE]
+      M_free <- M@free  [1, canonical_vars, drop = TRUE]
+      M_labs <- M@labels[1, canonical_vars, drop = TRUE]
+      M_labs[is.na(M_labs)] <- ""
+      m_off <- (gi - 1L) * p
+      mVals[m_off + seq_len(p)] <- as.numeric(M_vals)
+      mFree[m_off + seq_len(p)] <- as.logical(M_free)
+      mLabs[m_off + seq_len(p)] <- as.character(M_labs)
+    }
+  }
+
+  grp_data_list <- vector("list", nG)
+  for (gi in seq_along(sub_names)) {
+    gdat <- .extract_model_data(model@submodels[[sub_names[gi]]])
+    gdat[["fastsem_grp"]] <- gi
+    grp_data_list[[gi]] <- gdat
+  }
+  stacked <- do.call(rbind, grp_data_list)
+  stacked_mat <- data.matrix(stacked)
+  storage.mode(stacked_mat) <- "double"
+  col_names <- colnames(stacked_mat)
+  if (is.null(col_names))
+    stop("run_fastsem_ram(): stacked data is missing column names")
+
+  ctl <- .fastsem_control_vec(control)
+  sym <- getNativeSymbolInfo("fitSemFromMatricesMultigroupR",
+                              .fastsem_env$dll_handle)
+  fs_res <- .Call(sym,
+                  aVals, aFree, aLabs,
+                  sVals, sFree, sLabs,
+                  mVals, mFree, mLabs,
+                  aLbound, aUbound,
+                  sLbound, sUbound,
+                  mLbound, mUbound,
+                  lat_vars, man_vars,
+                  stacked_mat, col_names, ctl)
+
+  for (gi in seq_along(sub_names)) {
+    sub   <- model@submodels[[sub_names[gi]]]
+    g_res <- fs_res
+    if (length(fs_res$groupEstimates) >= gi)
+      g_res$estimates <- fs_res$groupEstimates[[gi]]
+    if (length(fs_res$groupSEs) >= gi)
+      g_res$se <- fs_res$groupSEs[[gi]]
+    # Build a structural-name → OpenMx-label map so SEs land in the right
+    # @output$standardErrors slot.  Keys: "from->to", "Var(x)", "x~~y", "x~1".
+    param_map <- .ram_build_param_map(sub)
+    model@submodels[[sub_names[gi]]] <-
+      .inject_fastsem_into_model(sub, g_res, param_map)
+  }
+
+  model <- .populate_model_output(model,
+    neg2logL = fs_res$neg2logL %||% NA_real_,
+    chi2     = fs_res$chi2     %||% NA_real_,
+    df       = fs_res$df       %||% NA_integer_,
+    fs_res   = fs_res)
+
+  # Aggregate parameters across submodels into the parent model's @output so
+  # summary() can render the parameter table.  omxGetParameters() crawls the
+  # submodels and merges by label; submodel @output$standardErrors are pulled
+  # in by matching label.
+  parent_estimate <- tryCatch(OpenMx::omxGetParameters(model),
+                              error = function(e) setNames(numeric(0), character(0)))
+  fp_names <- names(parent_estimate)
+  parent_se <- setNames(rep(NA_real_, length(fp_names)), fp_names)
+  for (sn in sub_names) {
+    sub_se_mat <- model@submodels[[sn]]@output$standardErrors
+    if (is.null(sub_se_mat) || !is.matrix(sub_se_mat)) next
+    for (lbl in rownames(sub_se_mat)) {
+      if (lbl %in% fp_names && is.na(parent_se[[lbl]]))
+        parent_se[[lbl]] <- sub_se_mat[lbl, 1]
+    }
+  }
+  model@output$estimate       <- parent_estimate
+  model@output$standardErrors <- matrix(parent_se, ncol = 1L,
+                                         dimnames = list(names(parent_se), "SE"))
+  model@.wasRun           <- TRUE
+  model@.modifiedSinceRun <- FALSE
+
+  model
+}
+
+#' Deprecated alias for `run_fastsem(..., engine = "ram")`.
+#'
+#' Retained for backwards compatibility.  New code should call
+#' [run_fastsem()] with `engine = "ram"` (the default for multi-group
+#' models) or `engine = "auto"`.
+#'
+#' @inheritParams run_fastsem
+#' @return The fitted `MxModel`.
+#' @export
+run_fastsem_ram <- function(model, control = list()) {
+  .Deprecated("run_fastsem(model, engine = \"ram\")", package = "fastsemR")
+  run_fastsem(model, control = control, engine = "ram")
 }
 
 #' Fit a umx model and return the raw fastsem result list.
@@ -639,20 +885,33 @@ print_fastsem <- function(res) {
   cat(sprintf("  chi2=%8.4f  p=%6.4f  AIC=%10.4f  BIC=%10.4f\n\n",
               res$chi2, res$pvalue, res$aic, res$bic))
 
+  # Equality-linked duplicates carry the same value+SE as their canonical
+  # sibling (see Nim's `paramNamesResolved` and rnim_api's `isCanonical`
+  # flag).  Hide them in the printed table — only the canonical row.
+  show_idx <- if (!is.null(res$isCanonical) &&
+                  length(res$isCanonical) == length(res$paramNames))
+                which(res$isCanonical) else seq_along(res$paramNames)
+
   cat(sprintf("  %-3s  %-26s  %12s  %10s  %8s\n",
               "#", "Parameter", "Estimate", "SE", "z"))
   cat("  ", strrep("-", 65), "\n", sep = "")
-  for (i in seq_along(res$paramNames)) {
+  display_n <- 0L
+  for (i in show_idx) {
+    display_n <- display_n + 1L
     cat(sprintf("  %-3d  %-26s  %12.6f  %10.6f  %8.3f\n",
-                i, res$paramNames[i], res$estimates[i], res$se[i], res$z[i]))
+                display_n, res$paramNames[i],
+                res$estimates[i], res$se[i], res$z[i]))
   }
 
   if (length(res$stdEst) > 0) {
     cat("\n  Standardized Estimates (StdAll)\n")
     cat("  ", strrep("-", 50), "\n", sep = "")
-    for (i in seq_along(res$paramNames))
+    display_n <- 0L
+    for (i in show_idx) {
+      display_n <- display_n + 1L
       cat(sprintf("  %-3d  %-26s  %10.6f\n",
-                  i, res$paramNames[i], res$stdEst[i]))
+                  display_n, res$paramNames[i], res$stdEst[i]))
+    }
   }
   invisible(res)
 }
@@ -757,7 +1016,8 @@ print_fastsem <- function(res) {
 }
 
 .populate_model_output <- function(model, neg2logL, chi2, df, fs_res = NULL) {
-  model@output$fit          <- neg2logL
+  model@output$fit                 <- neg2logL
+  model@output$Minus2LogLikelihood <- neg2logL
   model@output$status       <- list(code = 0L, status = "OK", message = "",
                                     iterations = 1L, evaluations = 1L,
                                     gradient.norm = 0)
@@ -784,6 +1044,60 @@ print_fastsem <- function(res) {
     model@output$.fastsem_result <- fs_res
   }
   model
+}
+
+.ram_build_param_map <- function(sub) {
+  # Build a {fastsem_struct_name → OpenMx_label} map for a single submodel,
+  # mirroring the structural-name conventions emitted by the multi-group RAM
+  # ingester in rnim_api.nim:
+  #   A[row, col] free  →  "<col_name>-><row_name>"
+  #   S[i,i]    free    →  "Var(<i_name>)"
+  #   S[i,j] i<j free   →  "<i_name>~~<j_name>"
+  #   M[1, i]   free    →  "<i_name>~1"
+  pm <- character(0)
+  A  <- sub@matrices$A
+  S  <- sub@matrices$S
+  has_M <- "M" %in% names(sub@matrices)
+
+  vn <- rownames(A@values)
+  for (col in seq_along(vn)) for (row in seq_along(vn)) {
+    if (row == col) next
+    if (isTRUE(A@free[row, col])) {
+      lab <- A@labels[row, col]
+      if (!is.na(lab) && nzchar(lab)) {
+        struct <- paste0(vn[col], "->", vn[row])
+        pm[struct] <- lab
+      }
+    }
+  }
+  for (i in seq_along(vn)) {
+    if (isTRUE(S@free[i, i])) {
+      lab <- S@labels[i, i]
+      if (!is.na(lab) && nzchar(lab))
+        pm[paste0("Var(", vn[i], ")")] <- lab
+    }
+    for (j in seq(i + 1L, length(vn))) {
+      if (j > length(vn)) break
+      if (isTRUE(S@free[i, j]) || isTRUE(S@free[j, i])) {
+        lab <- S@labels[i, j]
+        if (is.na(lab) || !nzchar(lab)) lab <- S@labels[j, i]
+        if (!is.na(lab) && nzchar(lab))
+          pm[paste0(vn[i], "~~", vn[j])] <- lab
+      }
+    }
+  }
+  if (has_M) {
+    M  <- sub@matrices$M
+    mvn <- colnames(M@values)
+    for (i in seq_along(mvn)) {
+      if (isTRUE(M@free[1, i])) {
+        lab <- M@labels[1, i]
+        if (!is.na(lab) && nzchar(lab))
+          pm[paste0(mvn[i], "~1")] <- lab
+      }
+    }
+  }
+  pm
 }
 
 .df_to_numeric_matrix <- function(x) {

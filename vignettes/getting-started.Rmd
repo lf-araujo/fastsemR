@@ -285,5 +285,9 @@ approximate (not strict) metric invariance for this subscale.
 
 - See `vignette("behavior-genetics")` for ACE twin models and bivariate
   Cholesky decompositions.
+- See `vignette("state-space-models")` for Kalman-filter SSMs, cross-lagged
+  panel models, exogenous inputs, and longitudinal GWAS sweeps.
 - See `?fastsem_fit` for the full lavaan syntax reference including ordinal
   variables, cluster-robust SEs, and definition variables.
+- Run `fastsem help sem`, `fastsem help ssm`, or `fastsem help syntax` in a
+  terminal for the built-in reference pages.

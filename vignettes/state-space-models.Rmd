@@ -1,0 +1,389 @@
+---
+title: "State Space Models with fastsemR"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{State Space Models with fastsemR}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE, comment = "#>",
+  eval = requireNamespace("fastsemR", quietly = TRUE) &&
+         isTRUE(fastsemR:::.fastsem_env$loaded)
+)
+library(fastsemR)
+set.seed(42)
+```
+
+State space models (SSMs) are longitudinal models in which a latent process
+evolves over time according to a **transition equation**, and is observed with
+error via an **observation equation**:
+
+$$
+\mathbf{x}_t = \mathbf{A}\,\mathbf{x}_{t-1} + \mathbf{B}\,\mathbf{u}_t + \mathbf{w}_t,
+\qquad \mathbf{w}_t \sim \mathcal{N}(\mathbf{0}, \mathbf{Q})
+$$
+$$
+\mathbf{y}_t = \mathbf{C}\,\mathbf{x}_t + \mathbf{D}\,\mathbf{u}_t + \mathbf{v}_t,
+\qquad \mathbf{v}_t \sim \mathcal{N}(\mathbf{0}, \mathbf{R})
+$$
+
+Parameters are estimated via the **Kalman filter** log-likelihood, maximised
+with the Adam optimiser using an analytical gradient (sensitivity
+propagation).  Standard errors come from the numerical Hessian of −2 ln *L*.
+
+**Computational backend.**  The Kalman objective is evaluated on the GPU
+(OpenCL float32) when the model fits within nS ≤ 8, nO ≤ 8, nI ≤ 8 — which
+covers all standard SSM models and the longitudinal GWAS path (nI = 1).  The
+gradient always runs on CPU (Weave-parallel analytical sensitivity).
+
+fastsemR exposes the full SSM path through `fastsem_fit_ssm()`, which accepts
+a formula string in fastsem's SSM syntax alongside a long-format data frame.
+
+---
+
+## Data format
+
+SSM data must be in **long format**: one row per person–wave combination with
+at minimum a person ID column, a time/wave column, and the observed outcome
+columns.
+
+```{r sim-data}
+# Simulate a simple AR(1) latent process observed through two indicators
+n_persons <- 150
+n_waves   <- 5
+
+sim_ssm <- function(n, T, a = 0.7, sigma_q = 0.5, sigma_r = 0.3) {
+  rows <- vector("list", n * T)
+  k    <- 1L
+  for (i in seq_len(n)) {
+    x <- rnorm(1, 0, sqrt(sigma_q^2 / (1 - a^2)))  # stationary init
+    for (t in seq_len(T)) {
+      x    <- a * x + rnorm(1, 0, sigma_q)
+      y1   <- x + rnorm(1, 0, sigma_r)
+      y2   <- x + rnorm(1, 0, sigma_r * 1.2)
+      rows[[k]] <- data.frame(pid = i, wave = t, y1 = y1, y2 = y2)
+      k <- k + 1L
+    }
+  }
+  do.call(rbind, rows)
+}
+
+df_ssm <- sim_ssm(n_persons, n_waves)
+head(df_ssm, 8)
+```
+
+---
+
+## 1. Univariate AR(1) latent process
+
+A single latent state `x` follows an AR(1) process.  Two observed variables
+`y1` and `y2` each load on `x` with fixed unit loadings — so `x` is defined
+on the same scale as the observations.
+
+```{r ar1}
+syntax_ar1 <- "
+  id:   pid
+  time: wave
+
+  # State transition (A matrix)
+  x ~> x
+
+  # Process noise (diagonal Q)
+  x ~~ x
+
+  # Observation model: state x is manifest in y1 and y2 (fixed unit loadings)
+  x =~ 1*y1 + 1*y2
+
+  # Measurement error (diagonal R)
+  y1 ~~ y1
+  y2 ~~ y2
+
+  # Initial state covariance
+  x ~~ x_init
+"
+
+res_ar1 <- fastsem_fit_ssm(syntax_ar1, df_ssm)
+print_fastsem(res_ar1)
+```
+
+The output reports:
+
+- **transition** — the AR(1) coefficient A[x,x] (should be near 0.70)
+- **proc.noise** — process noise variance Q[x,x] (near 0.25 = 0.5²)
+- **meas.error** — measurement error variances R[y1,y1] and R[y2,y2]
+- **init.cov** — initial state variance P0[x,x]
+- **Model Fit** — −2 ln L, AIC, BIC
+
+---
+
+## 2. Bivariate cross-lagged process
+
+Two latent states `x` and `y` can influence each other over time.  This is
+the SSM analogue of a cross-lagged panel model.
+
+```{r clpm-sim}
+# Simulate bivariate cross-lagged data
+sim_bivariate <- function(n, T,
+                          axx = 0.6, axy = 0.2,
+                          ayx = 0.1, ayy = 0.5,
+                          sigma_q = 0.4, sigma_r = 0.3) {
+  rows <- vector("list", n * T)
+  k <- 1L
+  for (i in seq_len(n)) {
+    xs <- rnorm(1, 0, 0.5); ys <- rnorm(1, 0, 0.5)
+    for (t in seq_len(T)) {
+      xs_new <- axx * xs + axy * ys + rnorm(1, 0, sigma_q)
+      ys_new <- ayx * xs + ayy * ys + rnorm(1, 0, sigma_q)
+      xs <- xs_new; ys <- ys_new
+      rows[[k]] <- data.frame(
+        pid = i, wave = t,
+        ox = xs + rnorm(1, 0, sigma_r),
+        oy = ys + rnorm(1, 0, sigma_r)
+      )
+      k <- k + 1L
+    }
+  }
+  do.call(rbind, rows)
+}
+
+df_clpm <- sim_bivariate(n_persons, n_waves)
+```
+
+```{r clpm}
+syntax_clpm <- "
+  id:   pid
+  time: wave
+
+  # All four A-matrix elements (autoregressive + cross-lagged)
+  x ~> x
+  x ~> y
+  y ~> x
+  y ~> y
+
+  # Process noise (diagonal Q — uncorrelated innovations)
+  x ~~ x
+  y ~~ y
+
+  # Observations: one indicator per state
+  x =~ 1*ox
+  y =~ 1*oy
+
+  # Measurement error
+  ox ~~ ox
+  oy ~~ oy
+
+  # Initial covariances
+  x ~~ x_init
+  y ~~ y_init
+"
+
+res_clpm <- fastsem_fit_ssm(syntax_clpm, df_clpm)
+print_fastsem(res_clpm)
+```
+
+The four transition parameters correspond to the A matrix:
+
+| Parameter | Meaning         | True value |
+|-----------|-----------------|------------|
+| `x~>x`    | AR for x        | 0.60       |
+| `y~>x`    | x predicts y    | 0.10       |
+| `x~>y`    | y predicts x    | 0.20       |
+| `y~>y`    | AR for y        | 0.50       |
+
+---
+
+## 3. Exogenous inputs (B and D matrices)
+
+Exogenous variables — time-varying covariates or genetic dosages — enter
+the model via the `~` operator:
+
+- `state ~ coef * input` → **B matrix** (input affects latent state)
+- `obs ~ coef * input` → **D matrix** (input affects observation directly)
+
+```{r exog-sim}
+# Simulate with a binary group covariate that shifts the latent level
+sim_with_input <- function(n, T, b_input = 0.8, a = 0.65,
+                           sigma_q = 0.4, sigma_r = 0.3) {
+  rows <- vector("list", n * T)
+  k <- 1L
+  for (i in seq_len(n)) {
+    grp <- rbinom(1, 1, 0.5)   # time-invariant covariate
+    x   <- rnorm(1, 0, 0.5)
+    for (t in seq_len(T)) {
+      x <- a * x + b_input * grp + rnorm(1, 0, sigma_q)
+      y <- x + rnorm(1, 0, sigma_r)
+      rows[[k]] <- data.frame(pid = i, wave = t, y = y, grp = grp)
+      k <- k + 1L
+    }
+  }
+  do.call(rbind, rows)
+}
+
+df_input <- sim_with_input(n_persons, n_waves)
+```
+
+```{r exog}
+syntax_input <- "
+  id:   pid
+  time: wave
+
+  x ~> x
+  x ~~ x
+  x =~ 1*y
+  y ~~ y
+  x ~~ x_init
+
+  # B matrix: group covariate shifts the latent state
+  x ~ b_grp * grp
+"
+
+res_input <- fastsem_fit_ssm(syntax_input, df_input)
+print_fastsem(res_input)
+```
+
+The parameter `b_grp` (type `input→state`) estimates how much the group
+variable shifts the latent state at each wave.  The true value is 0.80.
+
+---
+
+## 4. Missing data
+
+The Kalman filter handles missing observations naturally: at any wave where
+`y` is `NA` the update step is skipped and the filter propagates the predicted
+state.  No special syntax is needed — just leave `NA` in the data frame.
+
+```{r missing}
+df_miss <- df_ssm
+# Introduce 20% missingness on y1
+df_miss$y1[sample(nrow(df_miss), size = floor(0.2 * nrow(df_miss)))] <- NA
+
+res_miss <- fastsem_fit_ssm(syntax_ar1, df_miss)
+cat("AR coefficient with 20% missingness:",
+    round(res_miss$estimates[res_miss$paramNames == "x~>x"], 3), "\n")
+```
+
+---
+
+## 5. Fixing parameters
+
+Use `1*` to fix a transition coefficient (e.g. a random walk where A = 1),
+or any numeric prefix to fix at that value:
+
+```{r fixed}
+syntax_rw <- "
+  id:   pid
+  time: wave
+
+  # Random walk: A[x,x] = 1 (fixed)
+  1*x ~> x
+
+  x ~~ x
+  x =~ 1*y1
+  y1 ~~ y1
+  x ~~ x_init
+"
+
+res_rw <- fastsem_fit_ssm(syntax_rw, df_ssm[df_ssm$wave <= 3, ])
+cat("Process noise (random walk):",
+    round(res_rw$estimates[res_rw$paramNames == "x~~x"], 4), "\n")
+```
+
+---
+
+## 6. Longitudinal GWAS sweep
+
+When a `geno:` directive is present alongside the SSM syntax, fastsem runs a
+**per-SNP Kalman sweep**: for each variant the dosage is injected as a
+time-invariant exogenous input and the model is re-fitted with a warm start.
+This tests whether a SNP shifts the level of the latent state.
+
+Two genotype formats are supported:
+
+- **PLINK binary** (`.bed` / `.bim` / `.fam`): give the prefix without extension.
+- **Plain-text VCF** (`.vcf`): `GT` hard-calls or `DS` dosage field; bgzipped
+  files (`.vcf.gz`) are not yet supported.
+
+The model must declare the SNP path explicitly:
+
+```r
+# /data/longitudinal_cohort.csv
+id:   pid
+time: wave
+geno: /data/plink_prefix     # PLINK binary — OR — /data/genotypes.vcf for VCF
+sample_col: pid               # CSV column to match genomic sample IDs
+
+x ~> x
+x ~~ x
+x =~ 1*y1;  y1 ~~ y1
+x ~~ x_init
+
+# One free parameter per SNP: B[x, snp]
+x ~ b_snp * snp
+```
+
+Output (tab-separated to stdout) — **all free parameters** are reported per SNP:
+
+```
+CHR  POS  SNP  A1  A2  b_snp  SE_b_snp  x~>x  SE_x~>x  Q[x]  SE_Q[x]  R[y1]  SE_R[y1]  ...  Z  P  N_PERSONS
+1    4137824  rs4137824  A  G  0.392  0.041  0.651  0.028  0.091  0.018  0.040  0.008  ...  9.56  1.2e-21  300
+```
+
+The columns are:
+
+- **Locus**: `CHR`, `POS`, `SNP`, `A1`, `A2`
+- **Per-parameter pairs**: `<name>` and `SE_<name>` for every free parameter in the model (SNP B-coefficient, AR coefficients, process noise, measurement error, initial covariance)
+- **`Z`** and **`P`**: Wald statistic and two-sided p-value for the SNP parameter only
+- **`N_PERSONS`**: number of genotyped persons for this SNP
+
+After the sweep, fastsem re-fits the **null model** (no SNP input) and prints a full
+parameter report to `stderr` — this gives you clean baseline estimates for the latent
+process unconfounded by any single SNP.
+
+Both PLINK binary (`.bed`/`.bim`/`.fam`) and plain-text VCF files are
+supported.  The first SNP uses a cold start (800 Adam iterations); subsequent
+SNPs warm-start from the previous result (200 iterations), making genome-chip
+sweeps (~500k variants) tractable.
+
+```r
+# Run a longitudinal GWAS sweep from R
+res_gwas <- fastsem_fit_ssm(syntax_gwas, df_long,
+                             geno = "/data/plink_prefix",
+                             sample_col = "pid")
+# res_gwas is a data.frame: CHR POS SNP A1 A2 <param cols> SE_<param cols> Z P N_PERSONS
+head(res_gwas)
+```
+
+---
+
+## Summary of SSM syntax
+
+| Syntax              | Matrix | Meaning                                      |
+|---------------------|--------|----------------------------------------------|
+| `x ~> x`            | A      | Autoregressive coefficient                   |
+| `x ~> y`            | A      | Cross-lagged: x at t−1 predicts y at t       |
+| `1*x ~> x`          | A      | Fixed transition coefficient (= 1)           |
+| `x ~~ x`            | Q      | Process noise variance (log-parameterised)   |
+| `x ~~ z`            | Q      | Process noise covariance (tanh form)         |
+| `x =~ y1`           | C      | Observation loading (state x → obs y1)       |
+| `x =~ 1*y1`         | C      | Fixed unit loading                           |
+| `x =~ 1*y1 + y2`    | C      | Multiple observations per state              |
+| `y1 ~~ y1`          | R      | Measurement error variance                   |
+| `x ~~ x_init`       | P0     | Initial state variance                       |
+| `x ~ b*u`           | B      | Exogenous input → latent state               |
+| `y1 ~ d*u`          | D      | Exogenous input → observation                |
+| `id:   col`         | —      | Person ID column (required)                  |
+| `time: col`         | —      | Wave / time column (required)                |
+| `geno: path`        | —      | PLINK prefix or VCF for longitudinal GWAS    |
+| `sample_col: col`   | —      | CSV column to align genomic sample IDs       |
+
+---
+
+## See also
+
+- `vignette("getting-started")` — cross-sectional SEM, CFA, FIML, multi-group
+- `vignette("behavior-genetics")` — ACE twin models and Cholesky decompositions
+- `fastsem help ssm` — full SSM reference from the command line
+- `fastsem help syntax` — complete syntax reference
