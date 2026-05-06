@@ -163,7 +163,7 @@ cat("chi2:", round(res_eq$chi2, 3), "  p =", round(res_eq$pvalue, 3), "\n")
 
 Bound the `hp → mpg` coefficient to be negative (upper bound = 0):
 
-```{r bounds}
+```{r bounds, eval = FALSE}
 syntax_bnd <- "
   mpg ~ b1*hp + b2*wt
   hp ~~ wt
@@ -174,6 +174,11 @@ syntax_bnd <- "
 res_bnd <- fastsem_fit(syntax_bnd, df)
 cat("b1 with upper bound 0:", round(res_bnd$estimates[res_bnd$paramNames == "b1"], 4), "\n")
 ```
+
+> **Note:** the inequality-bound syntax (`b1 < 0`) is exposed by the
+> underlying engine but is not yet wired through the R parser; this
+> chunk is shown for reference only and will be enabled in a future
+> release.
 
 ---
 

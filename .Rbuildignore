@@ -9,3 +9,5 @@
 ^CRAN-SUBMISSION$
 ^LICENSE\.md$
 ^codecov\.yml$
+^doc$
+^Meta$

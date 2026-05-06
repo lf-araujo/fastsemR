@@ -8,14 +8,16 @@ vignette: >
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(
-  collapse = TRUE, comment = "#>",
-  eval = requireNamespace("fastsemR", quietly = TRUE) &&
-         isTRUE(fastsemR:::.fastsem_env$loaded)
-)
-library(fastsemR)
+# State-space support (`fastsem_fit_ssm()`) is implemented in the engine
+# but is not yet wired through the R package; chunks below are kept for
+# documentation and will be re-enabled once the binding is exported.
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 set.seed(42)
 ```
+
+> **Status:** the state-space binding (`fastsem_fit_ssm()`) is not yet
+> exported from fastsemR.  The syntax and examples below are stable
+> previews of the API that will land in the next release.
 
 State space models (SSMs) are longitudinal models in which a latent process
 evolves over time according to a **transition equation**, and is observed with
