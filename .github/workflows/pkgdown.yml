@@ -33,12 +33,12 @@ jobs:
         with:
           use-public-rspm: true
 
-      # The compiled fastsem shared library links libOpenCL.so at load
-      # time.  The ICD loader stub is enough to satisfy dlopen on the
-      # runner (no actual GPU / driver is required for documentation
-      # builds — kernels are not invoked).
+      # The compiled fastsem shared library dlopens the *unversioned*
+      # `libOpenCL.so` literal at load time.  The runtime package only
+      # ships `libOpenCL.so.1`, so we install the `-dev` package which
+      # adds the unversioned symlink — no GPU / driver needed.
       - name: Install OpenCL ICD loader
-        run: sudo apt-get update && sudo apt-get install -y ocl-icd-libopencl1
+        run: sudo apt-get update && sudo apt-get install -y ocl-icd-opencl-dev
 
       - name: Install OpenMx
         shell: Rscript {0}
