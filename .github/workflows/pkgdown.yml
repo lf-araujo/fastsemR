@@ -24,6 +24,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      # Tell .onLoad in R/zzz.R to skip the binary download + dyn.load.
+      # The pkgdown site only needs roxygen-generated reference pages
+      # and pre-rendered vignettes — none of which require the native
+      # OpenCL backend.  The binary is built and tested locally.
+      FASTSEMR_SKIP_BINARY_LOAD: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -32,20 +37,6 @@ jobs:
       - uses: r-lib/actions/setup-r@v2
         with:
           use-public-rspm: true
-
-      # fastsem's .so does two things at load time:
-      #  1. dlopen("libOpenCL.so") — needs the unversioned symlink from
-      #     `ocl-icd-opencl-dev` (runtime pkg only ships libOpenCL.so.1).
-      #  2. clGetPlatformIDs / firstPlatform — needs at least one
-      #     registered ICD or it raises EOpenCL.  POCL (Portable
-      #     Computing Language) is a CPU-only ICD that works on a
-      #     headless runner without any GPU driver.
-      - name: Install OpenCL ICD loader and POCL platform
-        run: sudo apt-get update && sudo apt-get install -y ocl-icd-opencl-dev pocl-opencl-icd
-
-      - name: Install OpenMx
-        shell: Rscript {0}
-        run: install.packages("OpenMx")
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:

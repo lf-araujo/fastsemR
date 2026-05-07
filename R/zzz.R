@@ -51,6 +51,12 @@
 # ── .onLoad ────────────────────────────────────────────────────────────────────
 
 .onLoad <- function(libname, pkgname) {
+  # Skip binary download + dyn.load entirely when the env var is set.
+  # CI documentation builds use this so pkgdown can install and load
+  # the package without OpenCL being available on the runner; the
+  # binary is only needed to actually run fastsem models.
+  if (nzchar(Sys.getenv("FASTSEMR_SKIP_BINARY_LOAD"))) return(invisible())
+
   tryCatch({
     lib_path <- .fastsem_download(force = FALSE)
     handle   <- dyn.load(lib_path)

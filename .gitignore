@@ -8,7 +8,6 @@ inst/doc
 /Meta/
 /vignettes/*.html
 /vignettes/*.pdf
-/man/*.Rd
 CRAN-SUBMISSION
 docs
 inst/doc
