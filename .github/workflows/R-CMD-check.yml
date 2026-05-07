@@ -44,9 +44,12 @@ jobs:
       # (no GPU/driver is required — kernels are never invoked here).
       - name: Install OpenCL ICD loader (Linux)
         if: runner.os == 'Linux'
-        # Need the -dev package: the runtime ships only `libOpenCL.so.1`
-        # but Nim's dynlib in fastsem dlopens the unversioned literal.
-        run: sudo apt-get update && sudo apt-get install -y ocl-icd-opencl-dev
+        # Need both:
+        #  - ocl-icd-opencl-dev: provides the unversioned `libOpenCL.so`
+        #    symlink that fastsem's Nim dynlib dlopens.
+        #  - pocl-opencl-icd: registers a CPU OpenCL platform so
+        #    Arraymancer's `firstPlatform()` init call succeeds.
+        run: sudo apt-get update && sudo apt-get install -y ocl-icd-opencl-dev pocl-opencl-icd
 
       - name: Install OpenCL ICD loader (macOS)
         if: runner.os == 'macOS'
