@@ -38,6 +38,28 @@ jobs:
           r-version: ${{ matrix.config.r }}
           use-public-rspm: true
 
+      # The compiled fastsem shared library dlopens libOpenCL at load
+      # time.  Install just the ICD loader stub on each platform so
+      # `library(fastsemR)` succeeds during the install/check step
+      # (no GPU/driver is required — kernels are never invoked here).
+      - name: Install OpenCL ICD loader (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ocl-icd-libopencl1
+
+      - name: Install OpenCL ICD loader (macOS)
+        if: runner.os == 'macOS'
+        run: echo "macOS ships OpenCL.framework; nothing to install."
+
+      - name: Install OpenCL ICD loader (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Windows runners ship OpenCL.dll under System32 already.
+          if (-not (Test-Path "$env:SystemRoot\System32\OpenCL.dll")) {
+            Write-Error "OpenCL.dll not found on Windows runner"
+            exit 1
+          }
+
       # Install OpenMx from its own repo (not on CRAN)
       - name: Install OpenMx
         shell: Rscript {0}
