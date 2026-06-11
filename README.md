@@ -1,5 +1,12 @@
 # fastsemR
 
+<p align="center">
+  <strong>📚 Escolha o idioma · 选择语言 · Choose language</strong><br>
+  <a href="https://lf-araujo.github.io/fastsemR/articles/getting-started_pt.html">🇧🇷 Português</a> ·
+  <a href="https://lf-araujo.github.io/fastsemR/articles/getting-started_zh.html">🇨🇳 中文</a> ·
+  <a href="https://lf-araujo.github.io/fastsemR/articles/getting-started.html">🇬🇧 English</a>
+</p>
+
 <!-- badges: start -->
 <!--
   Drop a hex sticker at man/figures/logo.png (square PNG, ~600×600) and

@@ -1,0 +1,28 @@
+---
+title: "性能基准"
+description: >
+  fastsem 与 lavaan 及 OpenMx 在连续 FIML、定义变量、与有序 FIML
+  场景下的速度对比。
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+> 🚧 **本文档正在翻译中。** 欢迎贡献译文 —
+> 详见 [English version](benchmarks.html)。
+
+## 测试方法
+
+待译。
+
+## 结果
+
+待译。
+
+## 讨论
+
+待译。

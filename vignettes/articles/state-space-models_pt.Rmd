@@ -1,0 +1,30 @@
+---
+title: "Modelos de espaço de estados com fastsemR"
+description: >
+  Ajustando escores de mudança latente (LCS), modelos autorregressivos
+  cruzados (CLPM/RI-CLPM), e modelos de espaço de estados gerais
+  com fastsemR.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+> 🚧 **Tradução em andamento.** Contribuições são bem-vindas —
+> veja a [versão em inglês](state-space-models.html) ou o
+> [repositório](https://github.com/lf-araujo/fastsemR).
+
+## CLPM e RI-CLPM
+
+A traduzir.
+
+## Escores de mudança latente (LCS)
+
+A traduzir.
+
+## Modelo bivariado de escores de mudança dinâmica (BCSM)
+
+A traduzir.

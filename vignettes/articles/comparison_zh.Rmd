@@ -1,0 +1,28 @@
+---
+title: "fastsem 与其他 SEM 软件的比较"
+description: >
+  fastsem 与 Mplus、OpenMx、lavaan、Stan 在基因组、纵向、有序 SEM
+  关键功能上的对比。
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+> 🚧 **本文档正在翻译中。** 欢迎贡献译文 —
+> 详见 [English version](comparison.html)。
+
+## 概述
+
+待译。
+
+## 功能矩阵
+
+待译。
+
+## 性能特征
+
+待译。

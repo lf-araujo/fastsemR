@@ -1,0 +1,33 @@
+---
+title: "Começando com fastsemR"
+description: >
+  Guia rápido do fastsemR: instalação, primeiro modelo, e como
+  interpretar os resultados.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+> 🚧 **Tradução em andamento.** Contribuições são bem-vindas —
+> veja a [versão em inglês](getting-started.html) ou o
+> [repositório](https://github.com/lf-araujo/fastsemR).
+
+## Instalação
+
+A traduzir.
+
+## Primeiro modelo
+
+A traduzir.
+
+## Lendo os resultados
+
+A traduzir.
+
+## Próximos passos
+
+A traduzir.

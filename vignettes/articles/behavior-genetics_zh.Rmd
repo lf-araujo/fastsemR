@@ -1,0 +1,32 @@
+---
+title: "fastsemR 行为遗传学"
+description: >
+  使用 fastsemR 拟合双生子模型与多变量行为遗传学模型 —— ACE、CTCT、Cholesky 分解、与最新的动态变化分数模型 (DCS)。
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+> 🚧 **本文档正在翻译中。** 欢迎贡献译文 —
+> 详见 [English version](behavior-genetics.html) 或访问
+> [仓库](https://github.com/lf-araujo/fastsemR)。
+
+## 双生子设计概述
+
+待译。
+
+## ACE 模型
+
+待译。
+
+## Cholesky 分解
+
+待译。
+
+## 双变量动态变化分数 (BCSM)
+
+待译。

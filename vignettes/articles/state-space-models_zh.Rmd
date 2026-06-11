@@ -1,0 +1,28 @@
+---
+title: "fastsemR 状态空间模型"
+description: >
+  使用 fastsemR 拟合潜变化分数 (LCS)、自回归交叉滞后 (CLPM)、与一般状态空间模型。
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+> 🚧 **本文档正在翻译中。** 欢迎贡献译文 —
+> 详见 [English version](state-space-models.html) 或访问
+> [仓库](https://github.com/lf-araujo/fastsemR)。
+
+## CLPM 与 RI-CLPM
+
+待译。
+
+## 潜变化分数模型 (LCS)
+
+待译。
+
+## 双变量动态变化分数模型 (BCSM)
+
+待译。

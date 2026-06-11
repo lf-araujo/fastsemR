@@ -1,0 +1,32 @@
+---
+title: "fastsemR 入门"
+description: >
+  fastsemR 的快速入门指南：安装、第一个模型，以及如何阅读输出结果。
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+> 🚧 **本文档正在翻译中。** 欢迎贡献译文 —
+> 详见 [English version](getting-started.html) 或访问
+> [仓库](https://github.com/lf-araujo/fastsemR)。
+
+## 安装
+
+待译。
+
+## 第一个模型
+
+待译。
+
+## 阅读输出结果
+
+待译。
+
+## 下一步
+
+待译。

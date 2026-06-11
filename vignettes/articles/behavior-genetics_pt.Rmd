@@ -1,0 +1,34 @@
+---
+title: "Genética comportamental com fastsemR"
+description: >
+  Ajustando modelos de gêmeos e modelos genético-comportamentais
+  multivariados com fastsemR — ACE, CTCT, decomposição de Cholesky,
+  e o modelo bivariado de escores de mudança dinâmica (BCSM).
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+> 🚧 **Tradução em andamento.** Contribuições são bem-vindas —
+> veja a [versão em inglês](behavior-genetics.html) ou o
+> [repositório](https://github.com/lf-araujo/fastsemR).
+
+## Visão geral do desenho gemelar
+
+A traduzir.
+
+## Modelo ACE
+
+A traduzir.
+
+## Decomposição de Cholesky
+
+A traduzir.
+
+## Escores de mudança dinâmica bivariados (BCSM)
+
+A traduzir.

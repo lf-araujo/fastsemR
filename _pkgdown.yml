@@ -16,12 +16,53 @@ home:
     structure: [links, license, community, citation, authors, dev]
 
 navbar:
+  # Portuguese (pt) is the default language; Chinese (zh) is secondary;
+  # English (en) is the canonical / fallback reference.  Each dropdown
+  # points at parallel article sets under vignettes/articles/ with
+  # _pt.Rmd / _zh.Rmd suffixes; the unsuffixed *.Rmd files are the
+  # English canonical sources (and also the R vignettes).
   structure:
-    left:  [reference, articles, news]
+    left:  [reference, pt, zh, en, news]
     right: [search, github]
   components:
-    articles:
-      text: Articles
+    zh:
+      text: "中文"
+      menu:
+      - text: "教程"
+      - text: 入门指南
+        href: articles/getting-started_zh.html
+      - text: 行为遗传学
+        href: articles/behavior-genetics_zh.html
+      - text: 状态空间模型
+        href: articles/state-space-models_zh.html
+      - text: -------
+      - text: "关于 fastsem"
+      - text: 与其他 SEM 软件的比较
+        href: articles/comparison_zh.html
+      - text: 性能基准
+        href: articles/benchmarks_zh.html
+      - text: 路线图
+        href: articles/roadmap_zh.html
+    pt:
+      text: "Português"
+      menu:
+      - text: "Tutoriais"
+      - text: Começando
+        href: articles/getting-started_pt.html
+      - text: Genética comportamental
+        href: articles/behavior-genetics_pt.html
+      - text: Modelos de espaço de estados
+        href: articles/state-space-models_pt.html
+      - text: -------
+      - text: "Sobre o fastsem"
+      - text: Comparação com outros softwares SEM
+        href: articles/comparison_pt.html
+      - text: Benchmarks de desempenho
+        href: articles/benchmarks_pt.html
+      - text: Roteiro
+        href: articles/roadmap_pt.html
+    en:
+      text: "English"
       menu:
       - text: "Tutorials"
       - text: Getting started
@@ -63,13 +104,32 @@ reference:
   - fastsem_load
 
 articles:
-- title: Tutorials
+# Language-grouped index used by the auto-generated "Articles" listing.
+# Portuguese first (default language), Chinese second, English last.
+# (The navbar dropdowns above are what most visitors will click.)
+- title: Tutoriais em português
   navbar: ~
+  contents:
+  - articles/getting-started_pt
+  - articles/behavior-genetics_pt
+  - articles/state-space-models_pt
+  - articles/comparison_pt
+  - articles/benchmarks_pt
+  - articles/roadmap_pt
+- title: 中文教程
+  contents:
+  - articles/getting-started_zh
+  - articles/behavior-genetics_zh
+  - articles/state-space-models_zh
+  - articles/comparison_zh
+  - articles/benchmarks_zh
+  - articles/roadmap_zh
+- title: English tutorials
   contents:
   - getting-started
   - behavior-genetics
   - state-space-models
-- title: About fastsem
+- title: About fastsem (English)
   desc: >
     Background on the fastsem engine — how it compares to other SEM
     software, performance numbers, and what is coming next.

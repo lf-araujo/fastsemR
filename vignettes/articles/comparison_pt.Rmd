@@ -1,0 +1,28 @@
+---
+title: "Comparação com outros softwares SEM"
+description: >
+  Como o fastsem se compara ao Mplus, OpenMx, lavaan, e Stan nos
+  recursos que importam para SEM genômico, longitudinal e ordinal.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+> 🚧 **Tradução em andamento.** Contribuições são bem-vindas —
+> veja a [versão em inglês](comparison.html).
+
+## Visão geral
+
+A traduzir.
+
+## Matriz de recursos
+
+A traduzir.
+
+## Características de desempenho
+
+A traduzir.

@@ -1,0 +1,28 @@
+---
+title: "Benchmarks de desempenho"
+description: >
+  Comparação de velocidade entre fastsem, lavaan e OpenMx em FIML
+  contínuo, variáveis de definição, e FIML ordinal.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+> 🚧 **Tradução em andamento.** Contribuições são bem-vindas —
+> veja a [versão em inglês](benchmarks.html).
+
+## Metodologia
+
+A traduzir.
+
+## Resultados
+
+A traduzir.
+
+## Discussão
+
+A traduzir.

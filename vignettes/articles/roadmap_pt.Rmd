@@ -1,0 +1,32 @@
+---
+title: "Roteiro de desenvolvimento"
+description: >
+  Direção de desenvolvimento do fastsem e fastsemR: recursos em
+  andamento, limitações atuais, e como contribuir.
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+> 🚧 **Tradução em andamento.** Contribuições são bem-vindas —
+> veja a [versão em inglês](roadmap.html).
+
+## Curto prazo
+
+A traduzir.
+
+## Médio prazo
+
+A traduzir.
+
+## Longo prazo
+
+A traduzir.
+
+## Como contribuir
+
+A traduzir.

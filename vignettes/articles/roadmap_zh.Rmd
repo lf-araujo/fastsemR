@@ -1,0 +1,32 @@
+---
+title: "路线图"
+description: >
+  fastsem 与 fastsemR 的开发方向：即将到来的功能、当前限制、
+  以及如何贡献。
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+> 🚧 **本文档正在翻译中。** 欢迎贡献译文 —
+> 详见 [English version](roadmap.html)。
+
+## 短期
+
+待译。
+
+## 中期
+
+待译。
+
+## 长期
+
+待译。
+
+## 如何贡献
+
+待译。
