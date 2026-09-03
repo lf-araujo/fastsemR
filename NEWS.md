@@ -1,5 +1,15 @@
 # fastsemR (development version)
 
+## Engine update (2026-09)
+
+* Refreshed the downloaded engine binary (release `0.1`) with the fixed fastsem
+  engine: **multi-group ordinal FIML** now works (twin ACE / CCC models were
+  previously fit as continuous-on-codes, collapsing the genetic contrast into
+  C); **Newton-TR** is the primary optimiser for ordinal and SSM/Kalman fits;
+  and the Linux R library is now **GPU-accelerated by default** (OpenCL, with
+  graceful CPU fallback). Estimates and standard errors match OpenMx.
+  Run `fastsem_update()` to pull the new binary.
+
 ## Initial development
 
 * R bindings to the fastsem Nim SEM engine: `fastsem_fit()`,
