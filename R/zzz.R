@@ -33,18 +33,34 @@
 
 # ── Download binary from GitHub Releases ──────────────────────────────────────
 
+# Release tag whose assets this package version downloads.  Single source of
+# truth for both the download URL and the cache filename: bump this (with the
+# package Version) on every engine release.  Because the cache name embeds the
+# tag, reinstalling a newer package fetches the new binary automatically
+# instead of reusing a stale version-less cached copy.
+.fastsem_release_tag <- function() "0.1.1"
+
 .fastsem_download <- function(force = FALSE) {
-  filename  <- .fastsem_lib_filename()
+  filename  <- .fastsem_lib_filename()   # GitHub asset name (no tag)
+  tag       <- .fastsem_release_tag()
   cache_dir <- .fastsem_cache_dir()
-  dest      <- file.path(cache_dir, filename)
+  # Cache under a tag-versioned name: libfastsem_r-<platform>-<tag>.<ext>.
+  dest      <- file.path(cache_dir,
+                         sub("(\\.[^.]+)$", paste0("-", tag, "\\1"), filename))
 
   if (!force && file.exists(dest)) return(dest)
 
-  base_url <- "https://github.com/lf-araujo/fastsemR/releases/download/0.1.1"
+  base_url <- paste0("https://github.com/lf-araujo/fastsemR/releases/download/", tag)
   url      <- paste0(base_url, "/", filename)
 
   message("fastsem: downloading binary\n  ", url)
   utils::download.file(url, dest, mode = "wb", quiet = FALSE)
+
+  # Supersede (don't orphan) a legacy version-less cache file from a
+  # pre-0.1.1 install; best-effort, never fatal.
+  legacy <- file.path(cache_dir, filename)
+  if (file.exists(legacy)) try(unlink(legacy), silent = TRUE)
+
   dest
 }
 

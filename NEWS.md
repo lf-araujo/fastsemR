@@ -11,6 +11,10 @@
   optimiser dispatches a second-order trust-region step scaled to the parameter
   count. Estimates and standard errors continue to match OpenMx.
   Run `fastsem_update()` after upgrading the package to pull the new binary.
+* The downloaded engine is now cached under a release-versioned filename, so a
+  future package upgrade fetches the matching binary automatically on first
+  use — no manual `fastsem_update()` needed. Any legacy version-less cache file
+  is superseded.
 
 # fastsemR (development version)
 
