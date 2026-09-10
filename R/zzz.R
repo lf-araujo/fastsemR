@@ -40,7 +40,7 @@
 
   if (!force && file.exists(dest)) return(dest)
 
-  base_url <- "https://github.com/lf-araujo/fastsemR/releases/download/0.1"
+  base_url <- "https://github.com/lf-araujo/fastsemR/releases/download/0.1.1"
   url      <- paste0(base_url, "/", filename)
 
   message("fastsem: downloading binary\n  ", url)

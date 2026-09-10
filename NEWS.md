@@ -1,3 +1,17 @@
+# fastsemR 0.1.1
+
+## Engine update (2026-09)
+
+* Refreshed the downloaded engine binary (new release `0.1.1`) with the latest
+  fastsem engine. High-dimensional FIML now parallelises to models with up to
+  64 observed variables (previously 32) for both the fit and the standard-error
+  Hessian; the per-pattern gradient's memory is bounded, so large models that
+  previously exhausted memory now complete; and a latent crash in the
+  standard-error step for models above 32 observed variables is fixed. The
+  optimiser dispatches a second-order trust-region step scaled to the parameter
+  count. Estimates and standard errors continue to match OpenMx.
+  Run `fastsem_update()` after upgrading the package to pull the new binary.
+
 # fastsemR (development version)
 
 ## Engine update (2026-09)
