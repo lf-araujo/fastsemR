@@ -38,7 +38,7 @@
 # package Version) on every engine release.  Because the cache name embeds the
 # tag, reinstalling a newer package fetches the new binary automatically
 # instead of reusing a stale version-less cached copy.
-.fastsem_release_tag <- function() "0.1.1"
+.fastsem_release_tag <- function() "0.1.2"
 
 .fastsem_download <- function(force = FALSE) {
   filename  <- .fastsem_lib_filename()   # GitHub asset name (no tag)

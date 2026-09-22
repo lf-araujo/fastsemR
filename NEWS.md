@@ -1,3 +1,16 @@
+# fastsemR 0.1.2
+
+## Engine update (2026-09)
+
+* Refreshed the downloaded engine binary (new release `0.1.2`) with the latest
+  fastsem engine. Ordinal FIML now runs through a single estimation path shared
+  by single- and multi-group models, so features compose: `vartype: direct`,
+  definition variables, and grouping now all run on the GPU for ordinal models
+  (multi-group ordinal previously forced definition variables onto the CPU and
+  rejected `vartype: direct`). Estimates and standard errors continue to match
+  OpenMx. Run `fastsem_update()` after upgrading the package to pull the new
+  binary.
+
 # fastsemR 0.1.1
 
 ## Engine update (2026-09)

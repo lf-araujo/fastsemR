@@ -1,6 +1,6 @@
 Package: fastsemR
 Title: R Interface to the fastsem SEM Estimator
-Version: 0.1.1
+Version: 0.1.2
 Authors@R: person("Luis", "Araujo", role = c("aut", "cre"),
     email = "lf.araujo@pm.me",
     comment = c(ORCID = "0000-0002-7987-8765"))
