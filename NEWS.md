@@ -1,3 +1,18 @@
+# fastsemR 0.1.3
+
+## Engine update (2026-09)
+
+* Refreshed the downloaded engine binary (new release `0.1.3`). Fixes an
+  intermittent crash in the definition-variable algebra-FIML path (a
+  thread-safety bug in the parallel gradient) and improves the optimiser's
+  convergence test: it now stops on a scale-free Newton decrement (√λ² ≈
+  remaining move in SE units, invariant to how variables are scaled) rather than
+  a unit-dependent gradient norm, so well-conditioned models converge in fewer
+  iterations while weakly-identified directions are reported honestly. Fit
+  objects now carry `newtonDecrement`, a convergence-quality value. Estimates and
+  standard errors continue to match OpenMx. Run `fastsem_update()` after
+  upgrading to pull the new binary.
+
 # fastsemR 0.1.2
 
 ## Engine update (2026-09)
