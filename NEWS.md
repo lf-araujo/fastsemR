@@ -1,3 +1,28 @@
+# fastsemR 0.1.4
+
+## Engine update (2026-10)
+
+* Refreshed the downloaded engine binary (new release `0.1.4`). Adds lavaan's
+  `y ~*~ y` (delta / unit-liability) operator for ordinal models: the
+  model-implied covariance is diagonal-standardised on the marked variables so
+  their thresholds become free — the smooth equivalent of OpenMx's
+  `mxConstraint(diag2vec(Vb) == 1)`, compatible with the trust-region optimiser
+  and both variance parameterisations. This makes the strictly-contingent
+  multi-group ordinal cascade (e.g. a three-stage CCC twin model) identifiable
+  where fixed thresholds left the liability scale free. Standardisation runs on
+  the F64 GPU kernel (−2logL matches CPU exactly); the analytic gradient carries
+  the exact VJP (verified against finite differences).
+* Multi-group ordinal fits now report standardised-estimate SEs (`stdSE`,
+  previously returned as zeros) via the delta method over the identified
+  subspace, so scale-invariant standardised estimates get finite, meaningful SEs
+  even when raw-scale parameters sit on an unidentified scale ray; and the
+  scale-free Newton-decrement convergence value is now reported on this path
+  (previously `NaN`).
+* Standard errors under the direct-symmetric variance parameterisation are no
+  longer `NaN` on ill-conditioned-but-positive-definite information matrices
+  (nearest-SPD Cholesky inverse). Estimates and SEs continue to match OpenMx.
+  Run `fastsem_update()` after upgrading to pull the new binary.
+
 # fastsemR 0.1.3
 
 ## Engine update (2026-09)
