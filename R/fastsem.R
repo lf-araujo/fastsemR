@@ -1,18 +1,40 @@
 ## fastsem.R — core SEM fitting and umx/OpenMx bridge
 
-# ── FIML LBFGS control helper ────────────────────────────────────────────────
+# ── Run-control helpers ──────────────────────────────────────────────────────
 #
-# `control` is a named list with optional fields:
-#   maxIter   integer   max LBFGS iterations (default 2000 in core)
-#   tol       numeric   gradient-norm tolerance (default 1e-6)
-#   ftol      numeric   objective-change tolerance (default 1e-5)
-#   tryHard   integer   extra retry rounds on non-convergence; each round
-#                       multiplies maxIter by 3 and divides tol by 10.
-#                       0 = no retry.
-#
-# Use `tryHard >= 1` for behavior analogous to OpenMx's `mxTryHard`.
-# Returned: numeric(4) — the wire format consumed by the Nim ingester
-# (`applyFimlControl` in rnim_api.nim).  Length-0 means "all defaults".
+# `control` is a named list with optional fields (absent or 0 = engine default):
+#   maxIter    integer  optimiser iteration cap
+#   tol        numeric  gradient tolerance
+#   ftol       numeric  objective-change tolerance
+#   tryHard    integer  extra rounds while not converged; each restarts from the
+#                       last solution with 3× maxIter and tol/10
+#   quadrature integer  ordinal FIML Gauss-Legendre points per dimension (1–15)
+# Each is applied as the matching model-syntax directive (`maxiter:`, `tol:`,
+# `ftol:`, `tryhard:`, `quadrature:`), appended after the user's syntax so the
+# control list takes precedence over a directive written in the syntax.
+.fastsem_control_keys <- c(maxIter = "maxiter", tol = "tol", ftol = "ftol",
+                           tryHard = "tryhard", quadrature = "quadrature")
+
+.fastsem_control_directives <- function(control) {
+  if (is.null(control) || length(control) == 0L) return(character(0))
+  if (!is.list(control) || is.null(names(control)))
+    stop("fastsem control must be a named list")
+  unknown <- setdiff(names(control), names(.fastsem_control_keys))
+  if (length(unknown))
+    stop("unknown fastsem control field(s): ", paste(unknown, collapse = ", "),
+         "; recognised: ", paste(names(.fastsem_control_keys), collapse = ", "))
+  out <- character(0)
+  for (nm in names(control)) {
+    v <- control[[nm]]
+    if (is.null(v) || isTRUE(as.numeric(v[1]) == 0)) next
+    val <- if (nm %in% c("tol", "ftol")) format(as.numeric(v[1]), digits = 15) else as.integer(v[1])
+    out <- c(out, paste0(.fastsem_control_keys[[nm]], ": ", val))
+  }
+  out
+}
+
+# Legacy numeric control vector still passed to the native entry points (the
+# current engine ignores it; run control travels as syntax directives).
 .fastsem_control_vec <- function(control) {
   if (is.null(control) || length(control) == 0L) return(numeric(0))
   if (!is.list(control))
@@ -53,9 +75,45 @@
 #' * **Derived parameters** — `indirect := a * b` (delta-method SE).
 #' * **Definition variables** — `data.colname * var` on the RHS of `=~`.
 #' * **Multi-group** — `group: colname` directive plus `c(v1, v2)*var`
-#'   per-group annotations.
+#'   per-group annotations.  Each element is a number (fixed in that group),
+#'   `NA` (free), `NaN`/`_` (variable blanked in that group) or a label: in
+#'   `A1 ~~ c(vA, 0)*A2` the covariance equals the parameter labelled `vA` in
+#'   group 1 and is fixed at 0 in group 2.  A parameter may carry one label
+#'   across groups (mixed with fixed values, not with `NA`).
 #' * **Weighted observations** — `weight: colname`.
 #' * **Cluster-robust SEs** — `cluster: colname`.
+#' * **Ordinal thresholds** — `y | t1 + t2`; each term may be `lab*t1`
+#'   (equality label), `0.5*t1` (fixed) or `start(0.5)*t1`, and modifiers
+#'   combine: `start(0.5)*lab*t1`.
+#'
+#' @section Model directives:
+#' Lines of the form `key: value` set model-wide options:
+#' * `group: col`, `weight: col`, `cluster: col` — see above.
+#' * `vartype: log | direct` — variance parameterisation.  `log` (default)
+#'   keeps variances positive; `direct` estimates them unconstrained, so they
+#'   can go negative (as OpenMx's direct-symmetric parameterisation).
+#' * `warmstart: on | off` — the polychoric/DWLS warm start (default on); turn
+#'   off for sparse or contingent ordinal cells.
+#' * `y ~*~ y` — unit-liability (delta) scaling of observed `y`: the implied
+#'   variance of `y` is standardised to 1, so its thresholds are free (OpenMx's
+#'   `diag(Vb) = 1` constraint).
+#' * `quadrature: N` — Gauss–Legendre points per integrated dimension for
+#'   ordinal FIML, 1–15 (default 3, or the `FASTSEM_ORD_NQ` environment
+#'   variable).  Cost per row grows as \eqn{N^{k-1}}; 3 is fast but biased
+#'   (about 6 −2lnL units on a 6-variable twin model), 7–9 matches an
+#'   accurately integrated OpenMx fit.
+#' * `maxiter: N` — optimiser iteration cap.
+#' * `tol: x` — gradient tolerance.
+#' * `ftol: x` — objective-change tolerance (L-BFGS: absolute
+#'   \eqn{|\Delta f|}; trust-region optimisers: relative
+#'   \eqn{|\Delta f|/(1+|f|)}).
+#' * `tryhard: N` — up to `N` extra rounds while the gradient is above
+#'   tolerance, each restarting from the last solution with 3× `maxiter` and
+#'   `tol`/10 (cf. OpenMx's `mxTryHard`).
+#'
+#' `maxiter`, `tol`, `ftol` and `tryhard` apply to every optimiser used by the
+#' fit; when omitted, each fitting regime keeps its own default.  The same
+#' settings can be passed as `control`.
 #'
 #' @param syntax Character string of lavaan model syntax.
 #' @param data Data frame or numeric matrix.  Non-numeric columns are coerced
@@ -63,8 +121,14 @@
 #' @param col_names Character vector of column names.  Defaults to
 #'   `colnames(data)`.  Must include every observed variable named in
 #'   `syntax`.
+#' @param control Optional named list of run-control settings: `maxIter`,
+#'   `tol`, `ftol`, `tryHard`, `quadrature`.  Each is applied as the matching
+#'   model directive (`maxiter:`, `tol:`, `ftol:`, `tryhard:`, `quadrature:`;
+#'   see *Model directives*) and takes precedence over a directive in
+#'   `syntax`.  Absent or `0` keeps the default; unknown names are an error.
 #'
-#' @return A named list with the following elements:
+#' @return A named list with the following elements (errors raised inside
+#'   the engine, e.g. a syntax error, are reported as R errors):
 #'   \describe{
 #'     \item{`estimator`}{Character. `"ML"`, `"FIML"`, or `"DWLS"`.}
 #'     \item{`seType`}{Character. SE method, e.g. `"OIM"` or `"cluster-robust"`.}
@@ -90,6 +154,16 @@
 #'       `groupEstimates[[g]]` contains the per-group estimates for group
 #'       `g` in the shared parameter space.}
 #'     \item{`groupSEs`}{List of numeric vectors (multi-group models).}
+#'     \item{`newtonDecrement`}{Numeric. Scale-free convergence measure
+#'       \eqn{g^T H^+ g} (≈ remaining move in SE units).}
+#'     \item{`thresholdNames`, `thresholds`, `thresholdSE`}{Ordinal thresholds
+#'       (`"y|t1"`, …), their estimates and SEs (`NaN` for fixed thresholds).
+#'       With free thresholds, the structural SEs include the threshold
+#'       uncertainty.}
+#'     \item{`freeNames`, `vcov`}{Names of the free structural parameters and
+#'       their covariance matrix (raw scale; pseudo-inverse over the
+#'       identified subspace), for delta-method CIs of functions of them,
+#'       e.g. standardised variance components.}
 #'   }
 #'
 #' @seealso [print_fastsem()] to display the result;
@@ -137,9 +211,23 @@ fastsem_fit <- function(syntax, data, col_names = NULL, control = list()) {
   if (is.null(col_names) || length(col_names) != ncol(mat))
     stop("fastsem_fit: col_names length must equal the number of data columns")
 
+  # Run control travels as syntax directives (see .fastsem_control_directives).
+  dirs <- .fastsem_control_directives(control)
+  if (length(dirs))
+    syntax <- paste(c(as.character(syntax)[1], dirs), collapse = "\n")
   ctl <- .fastsem_control_vec(control)
   sym <- getNativeSymbolInfo("fitSemR", .fastsem_env$dll_handle)
-  .Call(sym, as.character(syntax)[1], mat, as.character(col_names), ctl)
+  res <- .Call(sym, as.character(syntax)[1], mat, as.character(col_names), ctl)
+  if (is.null(res))
+    stop("fastsem_fit: the engine returned no result (an error inside an older ",
+         "engine build was not reported); rebuild/update the native library")
+  if (!is.null(res$error)) stop(res$error, call. = FALSE)
+  # Engines that return the free-parameter covariance send it flattened
+  # (row-major); reshape to a named matrix for delta-method work.
+  nf <- length(res$freeNames)
+  if (nf > 0 && length(res$vcov) == nf * nf)
+    res$vcov <- matrix(res$vcov, nf, nf, byrow = TRUE, dimnames = list(res$freeNames, res$freeNames))
+  res
 }
 
 #' Extract observed variable names referenced by a lavaan syntax string.
@@ -483,11 +571,11 @@ umx_to_lavaan <- function(model, include_map = FALSE) {
 #' @param model An `MxModel` as returned by `umxRAM()` (or a bare `mxModel`
 #'   container holding submodels for multi-group use).  The model must have
 #'   raw (row-level) data in `model@data@observed`.
-#' @param control Optional named list passed to the optimizer.  Recognized
-#'   fields: `maxIter` (int), `tol` (gradient-norm tolerance),
-#'   `ftol` (objective-change tolerance), `tryHard` (extra retry rounds on
-#'   non-convergence; each round multiplies `maxIter` by 3 and divides `tol`
-#'   by 10).  Any field absent or `0`/`0.0` uses the core default.
+#' @param control Optional named list of run-control settings (`maxIter`,
+#'   `tol`, `ftol`, `tryHard`, `quadrature`), passed to [fastsem_fit()] and
+#'   applied as model directives; see *Model directives* in [fastsem_fit()].
+#'   Absent or `0` keeps the default.  Honoured by the lavaan engine; the RAM
+#'   engine (`engine = "ram"`) builds no syntax and ignores it.
 #' @param engine One of `"auto"`, `"ram"`, `"lavaan"`.  For multi-group
 #'   models, `"auto"` selects the RAM engine.  For single-group models, the
 #'   lavaan engine is always used (RAM single-group is not yet wired in the

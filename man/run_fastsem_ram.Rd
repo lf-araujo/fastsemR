@@ -11,11 +11,11 @@ run_fastsem_ram(model, control = list())
 container holding submodels for multi-group use).  The model must have
 raw (row-level) data in \code{model@data@observed}.}
 
-\item{control}{Optional named list passed to the optimizer.  Recognized
-fields: \code{maxIter} (int), \code{tol} (gradient-norm tolerance),
-\code{ftol} (objective-change tolerance), \code{tryHard} (extra retry rounds on
-non-convergence; each round multiplies \code{maxIter} by 3 and divides \code{tol}
-by 10).  Any field absent or \code{0}/\code{0.0} uses the core default.}
+\item{control}{Optional named list of run-control settings (\code{maxIter},
+\code{tol}, \code{ftol}, \code{tryHard}, \code{quadrature}), passed to \code{\link[=fastsem_fit]{fastsem_fit()}} and
+applied as model directives; see \emph{Model directives} in \code{\link[=fastsem_fit]{fastsem_fit()}}.
+Absent or \code{0} keeps the default.  Honoured by the lavaan engine; the RAM
+engine (\code{engine = "ram"}) builds no syntax and ignores it.}
 }
 \value{
 The fitted \code{MxModel}.

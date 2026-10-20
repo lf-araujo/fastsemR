@@ -15,9 +15,16 @@ to \code{NA}.  Row order is preserved.}
 \item{col_names}{Character vector of column names.  Defaults to
 \code{colnames(data)}.  Must include every observed variable named in
 \code{syntax}.}
+
+\item{control}{Optional named list of run-control settings: \code{maxIter},
+\code{tol}, \code{ftol}, \code{tryHard}, \code{quadrature}.  Each is applied as the matching
+model directive (\verb{maxiter:}, \verb{tol:}, \verb{ftol:}, \verb{tryhard:}, \verb{quadrature:};
+see \emph{Model directives}) and takes precedence over a directive in
+\code{syntax}.  Absent or \code{0} keeps the default; unknown names are an error.}
 }
 \value{
-A named list with the following elements:
+A named list with the following elements (errors raised inside
+the engine, e.g. a syntax error, are reported as R errors):
 \describe{
 \item{\code{estimator}}{Character. \code{"ML"}, \code{"FIML"}, or \code{"DWLS"}.}
 \item{\code{seType}}{Character. SE method, e.g. \code{"OIM"} or \code{"cluster-robust"}.}
@@ -39,10 +46,29 @@ order as \code{paramNames}.  Variance parameters are on the original
 \item{\code{z}}{Numeric vector. z-statistics (\code{estimates / se}).}
 \item{\code{stdEst}}{Numeric vector. StdAll standardised estimates.}
 \item{\code{stdSE}}{Numeric vector. Delta-method SEs for \code{stdEst}.}
+\item{\code{paramPaths}}{Character vector, position-aligned with
+\code{paramNames}. \code{paramNames} prefers user labels (e.g. \code{"a"}
+for \code{wt ~ a*hp}); \code{paramPaths} keeps the label-independent
+structural name (\code{"hp->wt"}), so the label-to-path mapping is
+recoverable.}
+\item{\code{derivedNames}, \code{derivedEstimates}, \code{derivedSEs}}{
+Derived (\code{:=}) parameters: names, estimates and delta-method SEs.
+Kept separate from \code{paramNames}/\code{estimates} (free parameters
+only) so \code{nFreeParams} stays honest.}
 \item{\code{groupEstimates}}{List of numeric vectors (multi-group models).
 \code{groupEstimates[[g]]} contains the per-group estimates for group
 \code{g} in the shared parameter space.}
 \item{\code{groupSEs}}{List of numeric vectors (multi-group models).}
+\item{\code{newtonDecrement}}{Numeric. Scale-free convergence measure
+\eqn{g^T H^+ g} (≈ remaining move in SE units).}
+\item{\code{thresholdNames}, \code{thresholds}, \code{thresholdSE}}{Ordinal thresholds
+(\code{"y|t1"}, …), their estimates and SEs (\code{NaN} for fixed thresholds).
+With free thresholds, the structural SEs include the threshold
+uncertainty.}
+\item{\code{freeNames}, \code{vcov}}{Names of the free structural parameters and
+their covariance matrix (raw scale; pseudo-inverse over the
+identified subspace), for delta-method CIs of functions of them,
+e.g. standardised variance components.}
 }
 }
 \description{
@@ -73,10 +99,50 @@ or \code{b1 == b2} on a standalone line.
 \item \strong{Derived parameters} — \code{indirect := a * b} (delta-method SE).
 \item \strong{Definition variables} — \code{data.colname * var} on the RHS of \verb{=~}.
 \item \strong{Multi-group} — \code{group: colname} directive plus \code{c(v1, v2)*var}
-per-group annotations.
+per-group annotations.  Each element is a number (fixed in that group),
+\code{NA} (free), \code{NaN}/\verb{_} (variable blanked in that group) or a label: in
+\code{A1 ~~ c(vA, 0)*A2} the covariance equals the parameter labelled \code{vA} in
+group 1 and is fixed at 0 in group 2.  A parameter may carry one label
+across groups (mixed with fixed values, not with \code{NA}).
 \item \strong{Weighted observations} — \code{weight: colname}.
 \item \strong{Cluster-robust SEs} — \code{cluster: colname}.
+\item \strong{Ordinal thresholds} — \code{y | t1 + t2}; each term may be \code{lab*t1}
+(equality label), \code{0.5*t1} (fixed) or \code{start(0.5)*t1}, and modifiers
+combine: \code{start(0.5)*lab*t1}.
 }
+}
+
+\section{Model directives}{
+
+Lines of the form \code{key: value} set model-wide options:
+\itemize{
+\item \code{group: col}, \code{weight: col}, \code{cluster: col} — see above.
+\item \code{vartype: log | direct} — variance parameterisation.  \code{log} (default)
+keeps variances positive; \code{direct} estimates them unconstrained, so they
+can go negative (as OpenMx's direct-symmetric parameterisation).
+\item \code{warmstart: on | off} — the polychoric/DWLS warm start (default on); turn
+off for sparse or contingent ordinal cells.
+\item \verb{y ~*~ y} — unit-liability (delta) scaling of observed \code{y}: the implied
+variance of \code{y} is standardised to 1, so its thresholds are free (OpenMx's
+\code{diag(Vb) = 1} constraint).
+\item \code{quadrature: N} — Gauss–Legendre points per integrated dimension for
+ordinal FIML, 1–15 (default 3, or the \code{FASTSEM_ORD_NQ} environment
+variable).  Cost per row grows as \eqn{N^{k-1}}; 3 is fast but biased
+(about 6 −2lnL units on a 6-variable twin model), 7–9 matches an
+accurately integrated OpenMx fit.
+\item \code{maxiter: N} — optimiser iteration cap.
+\item \code{tol: x} — gradient tolerance.
+\item \code{ftol: x} — objective-change tolerance (L-BFGS: absolute
+\eqn{|\Delta f|}; trust-region optimisers: relative
+\eqn{|\Delta f|/(1+|f|)}).
+\item \code{tryhard: N} — up to \code{N} extra rounds while the gradient is above
+tolerance, each restarting from the last solution with 3× \code{maxiter} and
+\code{tol}/10 (cf. OpenMx's \code{mxTryHard}).
+}
+
+\code{maxiter}, \code{tol}, \code{ftol} and \code{tryhard} apply to every optimiser used by the
+fit; when omitted, each fitting regime keeps its own default.  The same
+settings can be passed as \code{control}.
 }
 
 \examples{
