@@ -133,35 +133,43 @@ cat("Indirect effect:", res$estimates[res$paramNames == "ab"],
 
 ---
 
-- [ ] **Multi-group *ordinal twin* models don't fit through either R route.**
+- [x] **Multi-group *ordinal twin* models don't fit through either R route.**
   Found while trying to reproduce an OpenMx three-stage CCC (ordinal
-  puff→use→rep, MZ/DZ) to get bootstrap CIs. Two failures:
-  - `run_fastsem()` on an ordinal `umx` model (e.g. `umxACE(..., ordinal)`)
-    **errors** with `no applicable method for '@' applied to an object of
-    class "NULL"`. The OpenMx→fastsem bridge (`umx_to_lavaan` / RAM path)
-    doesn't carry ordinal **thresholds**, so the ordinal expectation
-    resolves to `NULL`. It should either translate thresholds or fail with a
-    clear, actionable message (currently the RAM helper only notes "no
-    ordinal thresholds" in a comment).
-  - Hand-written multi-group `fastsem_fit()` syntax mis-handles **cross-twin
-    loading equality**: giving both twins' loadings the same label
-    (`A1 =~ a*puff_T1`, `A2 =~ a*puff_T2`) does **not** equate them — a
-    separate `A2->puff_T2` parameter is created — so the ACE structure
-    collapses (std → 0/0/1, `-2lnL` blows up, optimiser stops in 1 step).
-    Also `ordered:` here **frees** the thresholds ("N free thresholds added
-    to optimisation") rather than fixing them at empirical probit as
-    `benchmark/compare_accuracy_gl3.R` assumes.
-  - *Needs:* a documented multi-group convention (how to equate a loading
-    across twins; how to fix a cross-group covariance to `c(1, 0.5)`; whether
-    `ordered:` fixes or frees thresholds and how to force fixed) **plus a
-    worked twin ACE / CCC vignette or test**. The `behaviour-genetics`
-    vignette currently covers only *continuous* ACE; the only ordinal example
-    (`run_ordinal_riclpm`) is single-group. NEWS.md claims twin ACE/CCC
-    ordinal "matches OpenMx" — that path needs an R-level example.
-  - *Repro:* `fastsem_load()` OK; GPU OpenCL FIML runs; OpenMx `umxACE` on the
-    same binary `puff_ecig` data fits fine (−2lnL 1594.87, std A/C/E
-    .37/.44/.19) — so the blocker is purely the fastsem multi-group ordinal
-    twin interface, not the data or the engine's single-group ordinal FIML.
+  puff→use→rep, MZ/DZ) to get bootstrap CIs. *Resolved 2026-10-22;* the two
+  failures decomposed as follows:
+  - `run_fastsem()` on an ordinal `umx` model (e.g. `umxACE`) **errored**
+    with `no applicable method for '@' applied to an object of class "NULL"`.
+    *Diagnosis:* not a threshold problem — umx twin supermodels keep their
+    RAM matrices in a `top` submodel (the MZ/DZ submodels carry only data +
+    expectation), so the bridge had no A/S to read. *Fixed:* `umx_to_lavaan()`
+    and `run_fastsem()` now detect the shape and fail with a clear, actionable
+    message spelling out the hand-written multi-group `fastsem_fit()` route.
+  - The hand-written multi-group route **works**: the earlier "shared label
+    does not equate across twins" report was stale (the engine has tied shared
+    labels into equality constraints for a while), and `ordered:` never freed
+    thresholds — a *labelled* threshold line (`y | lab*t1`) does. Verified
+    against OpenMx joint multigroup FIML on simulated MZ/DZ data: −2lnL
+    5073.80 (fastsem) vs 5074.06 (OpenMx), estimates agreeing to ~0.01.
+    The conventions are documented in `run_fastsem()`'s twin-model error
+    and demonstrated in `tests/testthat/test-ordinal-twin-ace.R` (worked
+    ordinal twin ACE vs OpenMx); the engine pins them in fastsem's
+    `t_fitting` Test 13 (`mg_twin_ord.sem`, expected values from OpenMx).
+  - Two further bugs found and fixed while verifying (both engine-side,
+    in fastsem): the multi-group DWLS warm start omitted `varType`, so under
+    the now-default `vartype: direct` it returned log-scale variances that
+    the FIML stage read as direct values — group 2 of a configural fit
+    diverged to obj ~1e10 with negative variances; and the fastsemR
+    inject-back keyed on `paramNames` (labels) instead of `paramPaths`
+    (structural names), so labelled parameters were never written back into
+    the OpenMx matrices (start values survived as "estimates").
+  - *Still open:* translating umx twin supermodels automatically (the
+    `top`-submodel algebra structure needs its own bridge), the native
+    multi-group RAM API (`fitSemFromMatricesMultigroupR` — the R-side
+    wrapper is written, the engine symbol is not implemented; multi-group
+    `engine = "auto"` routes through lavaan until it lands), and a worked
+    CCC (three-stage cascade) example — the e-cig `.sem` specs under
+    fastsem's `tests/gpu_freeze/` cover it, an OpenMx-verified benchmark
+    remains to add.
 
 ---
 

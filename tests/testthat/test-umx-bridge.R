@@ -90,8 +90,12 @@ test_that("run_fastsem path model estimates match OpenMx to 2 decimal places", {
     umx::umxPath(cov  = c("hp", "wt")),
     umx::umxPath(var  = c("hp", "wt", "mpg")),
     umx::umxPath(means = c("hp", "wt", "mpg")),
-    data = df
+    data = df, autoRun = FALSE
   )
+  # umx_set_auto_run(FALSE) globally (helper-setup) means autoRun would be
+  # silently ignored — run the reference explicitly or the comparison below
+  # is against start values.
+  m_omx <- OpenMx::mxRun(m_omx, silent = TRUE)
 
   m_fs <- umx::umxRAM("path_fs",
     umx::umxPath(from = c("hp", "wt"), to = "mpg"),
@@ -145,5 +149,16 @@ test_that("run_fastsem multi-group CFA returns reasonable loadings per group", {
     expect_lt(p_pars[[nm]],  1.2)
     expect_gt(gw_pars[[nm]], 0.3)
     expect_lt(gw_pars[[nm]], 1.2)
+  }
+
+  # Group 2 must actually be fitted, not left at its start values: compare
+  # against OpenMx fitting the Grant-White submodel alone.  (A warm-start
+  # bug once left group 2 diverged at obj ~1e10 with unfitted starts that
+  # still fell inside the 0.3–1.2 band above.)
+  gw_omx <- OpenMx::mxRun(mg_gw, silent = TRUE)
+  gw_ref <- OpenMx::omxGetParameters(gw_omx)
+  for (nm in c("g_to_x1","g_to_x2","g_to_x3")) {
+    expect_lt(abs(gw_pars[[nm]] - gw_ref[[nm]]), 0.05,
+              label = paste(nm, "fastsem:", gw_pars[[nm]], "OpenMx:", gw_ref[[nm]]))
   }
 })

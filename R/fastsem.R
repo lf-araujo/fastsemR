@@ -333,9 +333,56 @@ fastsem_sem_vars <- function(syntax, col_names) {
 #' out <- umx_to_lavaan(m, include_map = TRUE)
 #' str(out$param_map)
 #' }
+
+# umx twin supermodels (umxACE, umxCP, ...) keep the shared RAM matrices in
+# a 'top' submodel; the MZ/DZ group submodels carry only data + expectation.
+# The single-model bridges (umx_to_lavaan, the RAM engine) have no per-group
+# A/S matrices to read there.
+.has_ram_matrices <- function(m) {
+  "A" %in% names(m@matrices) && "S" %in% names(m@matrices)
+}
+
+.is_twin_supermodel <- function(model) {
+  if (length(model@submodels) == 0L) return(FALSE)
+  grp <- model@submodels[setdiff(names(model@submodels), "top")]
+  length(grp) > 0L &&
+    !.has_ram_matrices(model) &&
+    !any(vapply(grp, .has_ram_matrices, logical(1)))
+}
+
+.twin_supermodel_message <- function() {
+  paste0(
+    "run_fastsem() does not yet translate umx twin supermodels (umxACE, umxCP, ...): ",
+    "their RAM matrices live in the 'top' submodel and the MZ/DZ submodels carry ",
+    "only data + expectation, so there are no per-group A/S matrices to read. ",
+    "Fit these by writing the multi-group fastsem syntax directly and calling ",
+    "fastsem_fit():\n",
+    "  - declare the grouping column with 'group: <col>' (one stacked data frame);\n",
+    "  - equate a parameter across twins with a shared label: 'A1 =~ a*y_T1' and 'A2 =~ a*y_T2';\n",
+    "  - fix a covariance per group with c(): 'A1 ~~ c(1, 0.5)*A2' (1 in MZ, 0.5 in DZ);\n",
+    "  - thresholds: 'ordered: y' fixes them at the empirical probit; 'y | lab*t1 + lab*t2' \n",
+    "    makes them free (log-diff encoded, pooled across variables sharing the label).\n",
+    "See tests/testthat/test-ordinal-twin-ace.R for a worked ordinal twin ACE example \n",
+    "verified against OpenMx.")
+}
+
 umx_to_lavaan <- function(model, include_map = FALSE) {
   if (!requireNamespace("OpenMx", quietly = TRUE))
     stop("The 'OpenMx' package is required for umx_to_lavaan().")
+
+  if (length(model@submodels) > 0L)
+    stop("umx_to_lavaan() translates a single RAM model, but 'model' is a ",
+         "container with submodels: ",
+         paste(names(model@submodels), collapse = ", "), ". ",
+         "Translate each submodel separately, or fit the joint model with ",
+         "run_fastsem(). umx twin supermodels (umxACE, umxCP, ...) are not ",
+         "translatable yet — see run_fastsem()'s twin-model message for the ",
+         "hand-written multi-group fastsem_fit() route.")
+  if (is.null(model@matrices$A) || is.null(model@matrices$S))
+    stop("umx_to_lavaan(): 'model' has no RAM A/S matrices to translate. ",
+         "umx twin supermodels (umxACE, umxCP, ...) keep their matrices in a ",
+         "'top' submodel and cannot be translated; write the multi-group ",
+         "fastsem syntax directly and fit with fastsem_fit().")
 
   man_vars <- model@manifestVars
   lat_vars <- model@latentVars
@@ -555,18 +602,25 @@ umx_to_lavaan <- function(model, include_map = FALSE) {
 #' When `model@submodels` is non-empty, [run_fastsem()] fits the joint
 #' multi-group model and injects per-group estimates back into each submodel.
 #' Two engines are available (selected via `engine`):
-#' * **`"ram"`** (default for multi-group) sends the OpenMx RAM matrices
-#'   (A, S, optionally M) directly to fastsem's Nim core via
-#'   `fitSemFromMatricesMultigroupR`.  This bypasses the lavaan-syntax
-#'   round-trip and honors cross-group fixed covariances exactly (e.g.
-#'   cross-twin A=1.0 in MZ vs 0.5 in DZ).
-#' * **`"lavaan"`** stacks data with a `fastsem_grp` indicator, builds a
-#'   combined lavaan syntax with `c()` per-group annotations, and fits via
-#'   [fastsem_fit()].  Use this when the RAM engine errors on a model that
-#'   uses features it does not yet support (definition variables, ordinal
-#'   thresholds, configural cross-group different-label free parameters).
+#' * **`"lavaan"`** (current default for multi-group) stacks data with a
+#'   `fastsem_grp` indicator, builds a combined lavaan syntax with `c()`
+#'   per-group annotations, and fits via [fastsem_fit()].
+#' * **`"ram"`** sends the OpenMx RAM matrices (A, S, optionally M) directly
+#'   to fastsem's Nim core via `fitSemFromMatricesMultigroupR`, bypassing
+#'   the lavaan-syntax round-trip and honoring cross-group fixed covariances
+#'   exactly (e.g. cross-twin A=1.0 in MZ vs 0.5 in DZ).  The engine-side
+#'   symbol is not implemented yet, so `engine = "ram"` currently errors
+#'   with a pointer to the lavaan engine; the dispatch picks it up
+#'   automatically once the engine ships it.
 #' Parameters that carry the same OpenMx label in all submodels are equated;
 #' others are group-specific.
+#'
+#' umx twin supermodels (umxACE, umxCP, ...) are not translatable yet: their
+#' RAM matrices live in a `top` submodel and the MZ/DZ submodels carry only
+#' data + expectation.  [run_fastsem()] rejects them with an error that
+#' spells out the hand-written multi-group [fastsem_fit()] route; see
+#' `tests/testthat/test-ordinal-twin-ace.R` for a worked ordinal twin ACE
+#' example verified against OpenMx.
 #'
 #' @param model An `MxModel` as returned by `umxRAM()` (or a bare `mxModel`
 #'   container holding submodels for multi-group use).  The model must have
@@ -577,9 +631,11 @@ umx_to_lavaan <- function(model, include_map = FALSE) {
 #'   Absent or `0` keeps the default.  Honoured by the lavaan engine; the RAM
 #'   engine (`engine = "ram"`) builds no syntax and ignores it.
 #' @param engine One of `"auto"`, `"ram"`, `"lavaan"`.  For multi-group
-#'   models, `"auto"` selects the RAM engine.  For single-group models, the
-#'   lavaan engine is always used (RAM single-group is not yet wired in the
-#'   R wrapper).
+#'   models, `"auto"` selects the RAM engine when the loaded library
+#'   implements `fitSemFromMatricesMultigroupR`, and the lavaan engine
+#'   otherwise (the current state).  For single-group models, the lavaan
+#'   engine is always used (RAM single-group is not yet wired in the R
+#'   wrapper).
 #'
 #' @return The same `MxModel` object with:
 #' \describe{
@@ -645,6 +701,9 @@ run_fastsem <- function(model, control = list(),
 
   is_multigroup <- length(model@submodels) > 0
 
+  if (is_multigroup && .is_twin_supermodel(model))
+    stop(.twin_supermodel_message())
+
   if (!is_multigroup) {
     if (engine == "ram")
       stop("run_fastsem(engine = 'ram'): single-group RAM dispatch is not ",
@@ -652,10 +711,25 @@ run_fastsem <- function(model, control = list(),
     return(.run_fastsem_lavaan_sg(model, control))
   }
 
-  # Multi-group: default to RAM unless caller forced lavaan.
-  if (engine == "lavaan")
-    return(.run_fastsem_lavaan_mg(model, control))
-  .run_fastsem_ram_mg(model, control)
+  # Multi-group. The native multi-group RAM API (fitSemFromMatricesMultigroupR)
+  # is not yet implemented in the engine, so both "auto" and "ram" route
+  # through the lavaan engine until it lands; forcing "ram" on a library
+  # that lacks the symbol gives an actionable error below.
+  ram_ok <- .mg_ram_engine_available()
+  if (engine == "ram" && !ram_ok)
+    stop("engine = 'ram': the loaded fastsem library does not implement the ",
+         "multi-group RAM API (fitSemFromMatricesMultigroupR). ",
+         "Use engine = 'lavaan' (the current multi-group default).")
+  if (ram_ok)
+    return(.run_fastsem_ram_mg(model, control))
+  .run_fastsem_lavaan_mg(model, control)
+}
+
+.mg_ram_engine_available <- function() {
+  !inherits(tryCatch(
+    getNativeSymbolInfo("fitSemFromMatricesMultigroupR",
+                       .fastsem_env$dll_handle),
+    error = function(e) e), "error")
 }
 
 # ── Multi-group lavaan engine ────────────────────────────────────────────────
@@ -1021,8 +1095,16 @@ print_fastsem <- function(res) {
 }
 
 .inject_fastsem_into_model <- function(model, fs_res, param_map = NULL) {
-  n_fs           <- length(fs_res$estimates)
-  struct_to_fidx <- setNames(seq_len(n_fs), fs_res$paramNames)
+  n_fs <- length(fs_res$estimates)
+  # Labelled parameters are reported by label in `paramNames`; the
+  # label-independent structural name ("g->x1", "Var(x1)", ...) rides in
+  # `paramPaths`, position-aligned.  Matrix positions must be matched by the
+  # structural name — keying by `paramNames` silently skipped every labelled
+  # parameter, leaving the umx start values in A/S/M.
+  struct_names <- if (!is.null(fs_res$paramPaths) &&
+                      length(fs_res$paramPaths) == n_fs) fs_res$paramPaths
+                   else fs_res$paramNames
+  struct_to_fidx <- setNames(seq_len(n_fs), struct_names)
 
   label_to_fidx <- list()
   if (!is.null(param_map) && length(param_map) > 0) {
