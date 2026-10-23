@@ -1,3 +1,44 @@
+# fastsemR 0.2.1
+
+## Engine update (2026-10, release `0.2.1`)
+
+* Multi-group configural fits fixed: the per-group DWLS warm start omitted
+  the variance parameterisation, so under the now-default `vartype: direct`
+  it returned log-scale variances that the FIML stage read as direct values —
+  group 2 of a configural fit diverged (negative variances, `-2lnL` ~1e10,
+  start values reported as estimates).  Both groups now match OpenMx exactly.
+* The R process is no longer pinned to a single CPU core after a fit.
+  Weave's thread pool pins the calling (R main) thread to CPU 0 on init and
+  never restores the mask; threads created afterwards (OpenBLAS's lazily-
+  initialised pool) inherited the one-core mask and spin-waited, making
+  lavaan's `chol2inv`-heavy fits up to ~1000× slower in-process.  The engine
+  now saves and restores the affinity mask around the pool.
+* The multi-group ordinal twin conventions — shared-label equality across
+  twins, `c()` per-group fixed covariances, labelled (free, pooled)
+  thresholds — are pinned by engine tests verified against OpenMx joint
+  multigroup FIML.
+* The free-tier license gate is disabled while the payment placeholders are
+  unconfigured (models of any size fit without a key).
+
+## R package fixes
+
+* `run_fastsem()` / `umx_to_lavaan()` on umx twin supermodels (`umxACE`,
+  `umxCP`, ...) now fail with a clear, actionable message that spells out
+  the hand-written multi-group `fastsem_fit()` route (previously an opaque
+  `no applicable method for '@'` error).
+* Estimates are now injected back into the OpenMx matrices for *labelled*
+  parameters — previously only unlabelled ones were written, so umx start
+  values could survive as "estimates" in `omxGetParameters()`.
+* Multi-group `engine = "auto"` routes through the lavaan engine (the native
+  multi-group RAM API is not implemented engine-side; the dispatch picks it
+  up automatically if a future engine ships it).
+* New worked example: multi-group ordinal twin ACE verified against OpenMx
+  (`tests/testthat/test-ordinal-twin-ace.R`).
+
+*Note:* the 0.2.0 package pointed at an engine release that was never
+published; 0.2.1 supersedes it.  Run `fastsem_update()` after upgrading to
+pull the new binary.
+
 # fastsemR 0.1.4
 
 ## Engine update (2026-10)
