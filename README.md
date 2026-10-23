@@ -163,13 +163,10 @@ cat("Indirect effect:", res$estimates[res$paramNames == "ab"],
     (structural names), so labelled parameters were never written back into
     the OpenMx matrices (start values survived as "estimates").
   - *Still open:* translating umx twin supermodels automatically (the
-    `top`-submodel algebra structure needs its own bridge), the native
+    `top`-submodel algebra structure needs its own bridge) and the native
     multi-group RAM API (`fitSemFromMatricesMultigroupR` — the R-side
     wrapper is written, the engine symbol is not implemented; multi-group
-    `engine = "auto"` routes through lavaan until it lands), and a worked
-    CCC (three-stage cascade) example — the e-cig `.sem` specs under
-    fastsem's `tests/gpu_freeze/` cover it, an OpenMx-verified benchmark
-    remains to add.
+    `engine = "auto"` routes through lavaan until it lands).
 
 ---
 
