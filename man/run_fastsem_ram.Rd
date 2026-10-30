@@ -2,26 +2,19 @@
 % Please edit documentation in R/fastsem.R
 \name{run_fastsem_ram}
 \alias{run_fastsem_ram}
-\title{Deprecated alias for \code{run_fastsem(..., engine = "ram")}.}
+\title{Deprecated alias for \code{\link[=run_fastsem]{run_fastsem()}}.}
 \usage{
 run_fastsem_ram(model, control = list())
 }
 \arguments{
-\item{model}{An \code{MxModel} as returned by \code{umxRAM()} (or a bare \code{mxModel}
-container holding submodels for multi-group use).  The model must have
-raw (row-level) data in \code{model@data@observed}.}
+\item{model}{An \code{MxModel} or an unfitted \code{lavaan} object.}
 
-\item{control}{Optional named list of run-control settings (\code{maxIter},
-\code{tol}, \code{ftol}, \code{tryHard}, \code{quadrature}), passed to \code{\link[=fastsem_fit]{fastsem_fit()}} and
-applied as model directives; see \emph{Model directives} in \code{\link[=fastsem_fit]{fastsem_fit()}}.
-Absent or \code{0} keeps the default.  Honoured by the lavaan engine; the RAM
-engine (\code{engine = "ram"}) builds no syntax and ignores it.}
+\item{control}{Optional named list of run-control settings (\code{maxIter}, \code{tol},
+\code{ftol}, \code{tryHard}, \code{quadrature}); see \emph{Model directives} in \code{\link[=fastsem_fit]{fastsem_fit()}}.}
 }
 \value{
 The fitted \code{MxModel}.
 }
 \description{
-Retained for backwards compatibility.  New code should call
-\code{\link[=run_fastsem]{run_fastsem()}} with \code{engine = "ram"} (the default for multi-group
-models) or \code{engine = "auto"}.
+Deprecated alias for \code{\link[=run_fastsem]{run_fastsem()}}.
 }

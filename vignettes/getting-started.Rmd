@@ -250,39 +250,45 @@ print(round(rbind(
 
 ## 7. Multi-group CFA
 
-Multi-group models are handled by `run_fastsem()` automatically when the
-`MxModel` contains submodels with separate data.  Here we fit a configural
-CFA on the Holzinger-Swineford visual subscale across two schools.
+Multi-group models are handled by `run_fastsem()` when the `MxModel` contains
+submodels with separate data.  As in OpenMx, a label shared by the groups is
+one parameter (equal across groups) and a group-specific label is a separate
+parameter.  Here we compare a configural and a metric-invariance CFA on the
+Holzinger-Swineford visual subscale across two schools.
 
 ```{r multigroup, eval=requireNamespace("umx", quietly=TRUE) && requireNamespace("lavaan", quietly=TRUE) && isTRUE(fastsemR:::.fastsem_env$loaded)}
 library(lavaan, warn.conflicts = FALSE)
 hs <- HolzingerSwineford1939
 
-mg_p <- umxRAM("mg_p",
+school <- function(name, rows) umxRAM(name,
   umxPath(from = "g", to = c("x1","x2","x3")),
   umxPath(v1m0 = "g"),
   umxPath(var   = c("x1","x2","x3")),
   umxPath(means = c("x1","x2","x3")),
-  data = hs[hs$school == "Pasteur",     c("x1","x2","x3")]
+  data = hs[rows, c("x1","x2","x3")]
 )
-mg_gw <- umxRAM("mg_gw",
-  umxPath(from = "g", to = c("x1","x2","x3")),
-  umxPath(v1m0 = "g"),
-  umxPath(var   = c("x1","x2","x3")),
-  umxPath(means = c("x1","x2","x3")),
-  data = hs[hs$school == "Grant-White", c("x1","x2","x3")]
-)
+mg_p  <- school("mg_p",  hs$school == "Pasteur")
+mg_gw <- school("mg_gw", hs$school == "Grant-White")
 
-r <- run_fastsem(mxModel("HS_mg", mg_p, mg_gw))
+# Configural: every Grant-White parameter gets its own label
+gw_labels <- names(omxGetParameters(mg_gw))
+mg_gw_own <- omxSetParameters(mg_gw, labels = gw_labels,
+                              newlabels = paste0(gw_labels, "_gw"))
+configural <- run_fastsem(mxModel("configural", mg_p, mg_gw_own,
+                                  mxFitFunctionMultigroup(c("mg_p", "mg_gw"))))
 
-cat("Pasteur loadings:\n")
-print(round(omxGetParameters(r@submodels$mg_p)[1:3], 3))
-cat("\nGrant-White loadings:\n")
-print(round(omxGetParameters(r@submodels$mg_gw)[1:3], 3))
+# Metric: loadings shared (same labels), residuals and means school-specific
+resid_means <- grep("_with_|one_to_", gw_labels, value = TRUE)
+mg_gw_metric <- omxSetParameters(mg_gw, labels = resid_means,
+                                 newlabels = paste0(resid_means, "_gw"))
+metric <- run_fastsem(mxModel("metric", mg_p, mg_gw_metric,
+                              mxFitFunctionMultigroup(c("mg_p", "mg_gw"))))
+
+umxCompare(configural, metric)
 ```
 
-The two schools produce similar but not identical loadings, consistent with
-approximate (not strict) metric invariance for this subscale.
+The metric model constrains the three loadings to be equal across schools;
+the likelihood-ratio test asks whether that costs fit.
 
 ---
 

@@ -1,22 +1,24 @@
 Package: fastsemR
 Title: R Interface to the fastsem SEM Estimator
-Version: 0.2.1
+Version: 0.3.0
 Authors@R: person("Luis", "Araujo", role = c("aut", "cre"),
     email = "lf.araujo@pm.me",
     comment = c(ORCID = "0000-0002-7987-8765"))
 Description: Provides R bindings to the fastsem structural equation modelling
     engine, a compiled Nim library that supports ML, DWLS, and FIML estimators
-    with optional GPU acceleration. The package translates umx/OpenMx RAM
-    model objects into fastsem lavaan syntax, fits the model, and injects
-    the estimates back so that standard OpenMx summary and comparison tools
-    continue to work. Multi-group models, definition variables, equality
-    constraints, parameter bounds, and cluster-robust standard errors are
-    all supported. The compiled binary is downloaded automatically from
+    with optional GPU acceleration. Models specified in umx/OpenMx (RAM) or
+    lavaan are fitted by fastsem and returned as the same kind of object, so
+    the OpenMx, umx and lavaan summary and comparison tools continue to work.
+    Multi-group models with shared and group-specific parameters, definition
+    variables, equality constraints and cluster-robust standard errors are
+    supported. The compiled binary is downloaded automatically from
     GitHub Releases on first use.
 License: MIT + file LICENSE
 URL: https://github.com/lf-araujo/fastsemR, https://lf-araujo.github.io/fastsemR/
 BugReports: https://github.com/lf-araujo/fastsemR/issues
 Imports:
+    methods,
+    stats,
     utils,
     tools
 Suggests:

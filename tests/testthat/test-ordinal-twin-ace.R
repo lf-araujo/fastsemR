@@ -1,8 +1,8 @@
 ## test-ordinal-twin-ace.R — multi-group ordinal twin ACE via fastsem_fit()
 ##
-## Demonstrates and pins the multi-group conventions the umx bridge cannot yet
-## drive (umx twin supermodels keep their matrices in 'top'; see
-## .twin_supermodel_message()):
+## Demonstrates and pins the multi-group conventions for hand-written twin
+## syntax (umx twin supermodels build their covariance from algebras and are
+## not translated by run_fastsem()):
 ##   * shared label        → equality across twins:  A1 =~ a*y_T1 ; A2 =~ a*y_T2
 ##   * c() per group       → fixed covariance:       A1 ~~ c(1, 0.5)*A2  (MZ, DZ)
 ##   * labelled thresholds → free (log-diff encoded, pooled across variables
@@ -130,7 +130,7 @@ test_that("multi-group ordinal twin ACE matches OpenMx joint FIML", {
   expect_gt(fs0$neg2logL, fs$neg2logL + 5)
 })
 
-test_that("run_fastsem/umx_to_lavaan give a clear error on umx twin supermodels", {
+test_that("run_fastsem gives a clear error on umx twin supermodels", {
   skip_if_no_openmx()
   skip_if_not_installed("umx")
 
@@ -145,7 +145,7 @@ test_that("run_fastsem/umx_to_lavaan give a clear error on umx twin supermodels"
   m <- umx::umxACE(selDVs = "T", sep = "_",
                    dzData = sim(.5, 500), mzData = sim(1, 500), autoRun = FALSE)
 
-  err <- expect_error(umx_to_lavaan(m), "container with submodels")
-  expect_match(conditionMessage(err), "top")
-  expect_error(run_fastsem(m), "twin supermodels")
+  expect_error(suppressWarnings(umx_to_lavaan(m)), "twin supermodels")
+  skip_if_not(isTRUE(fastsemR:::.fastsem_env$loaded), "fastsem native library not loaded")
+  expect_error(fastsemR:::.ptab_from_mx(m), "twin supermodels")
 })

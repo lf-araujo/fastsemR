@@ -88,10 +88,13 @@ reference:
   - fastsem_sem_vars
   - print_fastsem
 
-- title: "umx / OpenMx bridge"
-  desc: "Translate umx / OpenMx RAM models and inject estimates back."
+- title: "Fitting umx / OpenMx and lavaan models"
+  desc: "Fit a model specified in umx / OpenMx or lavaan and get the same kind of object back."
   contents:
   - run_fastsem
+
+- title: "Deprecated"
+  contents:
   - run_fastsem_ram
   - umx_to_lavaan
   - umx_to_fastsem

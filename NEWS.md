@@ -1,3 +1,100 @@
+# fastsemR 0.3.0
+
+## One entry point for umx / OpenMx and lavaan
+
+* `run_fastsem()` now takes an `MxModel` (umxRAM, `mxModel(type = "RAM")`,
+  or a multi-group container of RAM models) **or** an unfitted lavaan object
+  (`do.fit = FALSE`), and returns the same kind of object.  The model is read
+  into an internal parameter table (one row per RAM cell and group, like
+  lavaan's `parTable()`) and sent to the engine as typed columns; the engine
+  lowers it with internal names and round-trip numbers and returns estimates
+  and SEs per table row.  The column layout is checked against the engine's
+  at fit time.
+* OpenMx / lavaan then evaluate their own model at the fastsem estimates
+  (`mxRun(useOptimizer = FALSE)`; lavaan with `optim.method = "none"`), so fit
+  statistics, algebras (`mxSE()`, `umxSummary()` CIs), standardised solutions
+  and lavaan's robust SEs/tests are computed natively — no more hand-filled
+  `@output`.  For OpenMx, fastsem's SEs and parameter covariance are attached
+  (`vcov()` works).  The fastsem result list is in `model@output$fastsem` /
+  `fit@external$fastsem`.
+* Self-check: the −2lnL that OpenMx/lavaan compute at the fastsem estimates
+  must equal the engine's; `check = "warn" | "error" | "off"`
+  (`options(fastsemR.check = )`).
+* Bounds (OpenMx `lbound`/`ubound`, lavaan `lower`/`upper` and `a > 0`
+  lines) are enforced by the engine as hard bounds: a Heywood case stops at
+  `lbound = 0` exactly as in OpenMx.  Inequalities between two parameters
+  cannot be sent and are only checked after the fit.
+* Newly supported through the bridge: labelled and shared means; multi-group
+  models with shared (same label) and group-specific (unlabelled) parameters,
+  as OpenMx and lavaan define them; `group.equal`; lavaan `:=`, MLR and other
+  ML-based estimators, `fixed.x` covariates; `mxConstraint` equalities between
+  labels; plain threshold matrices and umx's deviation thresholds
+  (`umxThresholdMatrix`, incl. Mehta's default for 3+ categories); ordinal
+  models mixed with continuous indicators; means fixed at non-zero values.
+  Ordinal variables must be identified (theta, Mehta, binary conventions);
+  the delta parameterisation (a total-variance mxConstraint) is not
+  translated.
+  Unsupported constructs fail with a clear error instead of being dropped:
+  umx twin supermodels built from algebras (`umxACE`, `umxCP`, ...), cells
+  bound to algebras, definition variables on variances/means, lavaan ordered
+  indicators, and umxRAM's deviation-based threshold algebras.
+* `umx_to_lavaan()`, `umx_to_fastsem()` and `run_fastsem_ram()` are
+  deprecated; `run_fastsem(engine = )` is ignored.
+
+## Engine (release `0.3.0`)
+
+The bridge requires these engine fixes; `run_fastsem()` refuses to run on an
+older engine (`fastsem_update()`).
+
+* Labelled, shared-label and start-valued intercepts (`x ~ m*1`) were
+  silently dropped — the model became covariance-only with a meaningless
+  −2lnL.  Fixed non-zero intercepts (`x ~ 5*1`, `c(NA, 5)*1`) were dropped
+  too.  Both are now fitted (a fixed non-zero mean needs at least one free
+  mean in the model).
+* Fixed values are kept in double precision (they were stored as float32).
+* Multi-group fits now follow lavaan/OpenMx semantics: a labelled parameter is
+  shared across groups, an unlabelled one is group-specific, `c(NA, ...)` is a
+  separate parameter per group, `c()` may carry different labels per group,
+  and a parameter fixed by `c()` in some groups no longer receives gradient
+  from them.  Previously `c(NA, NA)` equated across groups whenever any `c()`
+  was present, and labels were ignored when none was.  The joint fit's SEs
+  now come from the joint Hessian.  Verified against OpenMx (−2lnL, estimates
+  and SEs).
+* Parameter-table input (`fitSemTableR`, `tableSchemaR`, `tableSyntaxR`;
+  `partable.nim`): the row type is the single definition of the columns
+  (schema and decoder are derived from its fields).
+* `:=` derived parameters are returned for multi-group models (they were
+  dropped), with delta-method SEs from the joint covariance.
+* Engine programs no longer read stdin at start-up: the CLI's pre-pass
+  (skip the OpenCL compile for `expected:` models) moved into `main`; the
+  test binaries hung when stdin was an open pipe.
+* **Ordinal FIML**, the engine's focus:
+  - Models with continuous *and* ordinal observed variables are fitted by the
+    joint likelihood, as in OpenMx: per row the continuous values by their
+    normal density and the ordinal ones by the rectangle probability of their
+    latent responses conditional on the continuous values.  Previously the
+    continuous variables were silently integrated out, so their data did not
+    enter the fit.  Runs on the F64 GPU kernel (CPU otherwise); integrating
+    only the ordinal dimensions also makes these rows cheaper.
+  - Mehta's parameterisation (two thresholds fixed, latent-response means and
+    residual variances free) is fitted by FIML; it was routed to DWLS.  An
+    ordinal variable is FIML-identified when two of {mean, residual variance,
+    thresholds} are fixed; an under-identified one is now an **error** instead
+    of a silent switch to DWLS, which is available on request with
+    `estimator: dwls`.
+  - A free threshold above fixed ones is kept above them (and started one
+    fixed-threshold spacing higher), so a category cannot collapse.
+  - The covariance of (structural parameters, thresholds) is returned
+    (`vcovAug`), e.g. for SEs of umx threshold deviations.
+* `likelihood: normal` directive: complete-data ML on the N-denominator
+  likelihood (OpenMx and lavaan's default); the default remains Wishart.
+* Bounds (`a > lo`, `a < hi`) are hard bounds, enforced by an active-set loop
+  around every optimiser; an estimate sits exactly on a bound when it binds.
+  They were a log-barrier penalty (weight 1000) that also moved solutions
+  whose bound did not bind, and under `vartype: direct` (the default) a
+  variance bound was applied to exp(σ²), so `v > 0` never bound and pushed
+  the variance up.
+
 # fastsemR 0.2.1
 
 ## Engine update (2026-10, release `0.2.1`)

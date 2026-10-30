@@ -46,15 +46,6 @@ order as \code{paramNames}.  Variance parameters are on the original
 \item{\code{z}}{Numeric vector. z-statistics (\code{estimates / se}).}
 \item{\code{stdEst}}{Numeric vector. StdAll standardised estimates.}
 \item{\code{stdSE}}{Numeric vector. Delta-method SEs for \code{stdEst}.}
-\item{\code{paramPaths}}{Character vector, position-aligned with
-\code{paramNames}. \code{paramNames} prefers user labels (e.g. \code{"a"}
-for \code{wt ~ a*hp}); \code{paramPaths} keeps the label-independent
-structural name (\code{"hp->wt"}), so the label-to-path mapping is
-recoverable.}
-\item{\code{derivedNames}, \code{derivedEstimates}, \code{derivedSEs}}{
-Derived (\code{:=}) parameters: names, estimates and delta-method SEs.
-Kept separate from \code{paramNames}/\code{estimates} (free parameters
-only) so \code{nFreeParams} stays honest.}
 \item{\code{groupEstimates}}{List of numeric vectors (multi-group models).
 \code{groupEstimates[[g]]} contains the per-group estimates for group
 \code{g} in the shared parameter space.}
@@ -179,5 +170,5 @@ cat("Indirect hp->wt->mpg:", res2$estimates[res2$paramNames == "ab"],
 }
 \seealso{
 \code{\link[=print_fastsem]{print_fastsem()}} to display the result;
-\code{\link[=run_fastsem]{run_fastsem()}} for the umx/OpenMx bridge.
+\code{\link[=run_fastsem]{run_fastsem()}} to fit OpenMx/umx or lavaan models.
 }
