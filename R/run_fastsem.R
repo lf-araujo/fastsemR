@@ -47,6 +47,13 @@
 #' @param model An `MxModel` or an unfitted `lavaan` object.
 #' @param control Optional named list of run-control settings (`maxIter`, `tol`,
 #'   `ftol`, `tryHard`, `quadrature`); see *Model directives* in [fastsem_fit()].
+#' @section Ordinal models with more than 8 observed variables:
+#' The engine's GPU path for these can freeze a machine whose GPU also drives
+#' the display (APUs, integrated graphics), so it is used only when chosen:
+#' `options(fastsemR.ordinal_gpu = TRUE)` (or `FALSE` for the CPU).  When the
+#' option is unset an interactive session is asked once; a non-interactive one
+#' runs on the CPU.
+#'
 #' @param check What to do when the self-check fails: `"warn"` (default),
 #'   `"error"` or `"off"`.  Defaults to `getOption("fastsemR.check", "warn")`.
 #' @param engine Deprecated and ignored.
