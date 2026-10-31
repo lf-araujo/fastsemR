@@ -75,13 +75,14 @@ lavaan models with ordered indicators.  Means fixed at a non-zero value
 need at least one free mean in the model.
 }
 
-\section{Ordinal models with more than 8 observed variables}{
+\section{Ordinal models and the GPU}{
 
-The engine's GPU path for these can freeze a machine whose GPU also drives
-the display (APUs, integrated graphics), so it is used only when chosen:
-\code{options(fastsemR.ordinal_gpu = TRUE)} (or \code{FALSE} for the CPU).  When the
-option is unset an interactive session is asked once; a non-interactive one
-runs on the CPU.
+The engine chooses by device.  On a GPU that shares memory with the host
+(APUs, integrated graphics, Apple Silicon) ordinal FIML runs on the GPU up to
+8 observed variables and on the CPU above, because long GPU jobs there can
+freeze the display; on a dedicated GPU it runs on the GPU at any size.
+\code{options(fastsemR.ordinal_gpu = TRUE)} uses the GPU at any size,
+\code{FALSE} the CPU.
 }
 
 \examples{

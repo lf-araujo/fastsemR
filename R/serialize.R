@@ -129,25 +129,14 @@
   msgs
 }
 
-# Ordinal FIML with more than 8 observed variables: the engine's GPU path can
-# freeze a machine whose GPU also drives the display (APUs / integrated
-# graphics), so it is used only when chosen.  The choice is
-# options(fastsemR.ordinal_gpu = TRUE / FALSE); unset, an interactive session
-# is asked once (and the answer kept for the session), a non-interactive one
-# runs on the CPU and the engine says how to enable the GPU.
+# Ordinal FIML: the engine picks by device.  On a GPU that shares host memory
+# (APUs, integrated graphics, Apple Silicon) it stays on the GPU up to 8
+# observed variables and uses the CPU above, where long GPU jobs can freeze the
+# display; on a dedicated GPU it uses the GPU at any size.
+# options(fastsemR.ordinal_gpu = TRUE / FALSE) sends `ordinalgpu: on / off` to
+# override; unset, no directive.
 .ordinal_gpu_choice <- function(pt) {
   if (!any(pt$mat == "T")) return(NULL)
-  if (length(unique(unlist(attr(pt, "manifest")))) <= 8) return(NULL)
   og <- getOption("fastsemR.ordinal_gpu")
-  if (!is.null(og)) return(isTRUE(og))
-  if (!interactive()) return(NULL)
-  pick <- utils::menu(c("Use the GPU", "Use the CPU"), title = paste0(
-    "This ordinal model has more than 8 observed variables. The GPU is much ",
-    "faster, but its long computations can freeze a machine whose GPU also ",
-    "drives the display (APUs / integrated graphics). Use the GPU?"))
-  og <- pick == 1L
-  options(fastsemR.ordinal_gpu = og)
-  message("fastsemR: ordinal GPU ", if (og) "on" else "off",
-          " for this session; change with options(fastsemR.ordinal_gpu = ).")
-  og
+  if (is.null(og)) NULL else isTRUE(og)
 }

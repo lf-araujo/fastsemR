@@ -127,16 +127,15 @@ test_that("an ordinal variable without two pins is rejected in OpenMx terms", {
   expect_error(fastsemR:::.ptab_from_mx(m), "'y1' \\(group 1\\) is not identified")
 })
 
-test_that("ordinal GPU above 8 observed variables is only used when chosen", {
+test_that("ordinal GPU choice: device default unless options(fastsemR.ordinal_gpu) is set", {
   pt <- data.frame(mat = c("A", "T"), stringsAsFactors = FALSE)
   attr(pt, "manifest") <- list(paste0("y", 1:10))
   withr::local_options(fastsemR.ordinal_gpu = NULL)
-  # non-interactive and unset: no directive (the engine runs on the CPU, with a note)
-  expect_null(fastsemR:::.ordinal_gpu_choice(pt))
+  expect_null(fastsemR:::.ordinal_gpu_choice(pt))    # engine decides by device
   withr::local_options(fastsemR.ordinal_gpu = TRUE)
-  expect_true(fastsemR:::.ordinal_gpu_choice(pt))
+  expect_true(fastsemR:::.ordinal_gpu_choice(pt))    # → `ordinalgpu: on`
   withr::local_options(fastsemR.ordinal_gpu = FALSE)
-  expect_false(fastsemR:::.ordinal_gpu_choice(pt))
-  attr(pt, "manifest") <- list(paste0("y", 1:8))
-  expect_null(fastsemR:::.ordinal_gpu_choice(pt))   # 8 or fewer: GPU as usual
+  expect_false(fastsemR:::.ordinal_gpu_choice(pt))   # → `ordinalgpu: off`
+  pt$mat <- "A"
+  expect_null(fastsemR:::.ordinal_gpu_choice(pt))    # continuous: never
 })

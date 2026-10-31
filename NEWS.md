@@ -94,6 +94,29 @@ older engine (`fastsem_update()`).
   whose bound did not bind, and under `vartype: direct` (the default) a
   variance bound was applied to exp(σ²), so `v > 0` never bound and pushed
   the variance up.
+* **`expected:` (algebra / continuous-time) models fit on the GPU** by
+  default: the engine compiles each model's algebra into its own OpenCL
+  kernels (objective and analytical gradient), with a note that this can be
+  slower on some hardware.  A bivariate CT-CLPM with per-person intervals:
+  N = 10⁴ 7.6 s → 1.3 s, N = 10⁵ 87 s → 11 s, identical results.
+  `algebragpu: off` or `Sys.setenv(FASTSEM_ALGEBRA_GPU = "off")` keeps the
+  CPU.  The CPU algebra evaluator also gained `/`, `%x%`, `solve()`, `tr()`
+  and `diag()` for models with definition variables or missing data.
+* **Ordinal models above 8 observed variables follow the GPU type**: on a GPU
+  that shares memory with the host (APUs, integrated graphics, Apple
+  Silicon) they run on the CPU, because long GPU jobs there can freeze the
+  display; on a dedicated GPU they run on the GPU, with a note.
+  `options(fastsemR.ordinal_gpu = TRUE / FALSE)` overrides either way; the
+  session question is gone.
+* Complete-data ML without means follows lavaan's `meanstructure = FALSE`
+  throughout: −2logL, AIC and BIC are evaluated at the sample means (they
+  were evaluated at μ = 0, adding N·ȳᵀΣ⁻¹ȳ on uncentred data), and
+  `expected:` models no longer fit the uncentred second moment.  Models from
+  `run_fastsem()` always carry means and are unaffected.
+* The CPU and GPU paths share one source for their numerics (Cholesky and
+  solves, the Woodbury update for definition variables, the matrix
+  exponential, the Genz rectangle probability); the GPU Woodbury kernels no
+  longer add a 1e-8 diagonal jitter the CPU did not.
 
 # fastsemR 0.2.1
 
