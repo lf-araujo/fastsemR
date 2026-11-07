@@ -1,3 +1,26 @@
+# fastsemR 0.4.0
+
+## Engine 0.4.0: faster CPU fits
+
+* Thread count follows the job: the engine sizes its pool from the CPU
+  affinity mask and the scheduler allocation (`NCPUS`, `PBS_NCPUS`,
+  `SLURM_CPUS_PER_TASK`, or `FASTSEM_THREADS`) instead of every CPU on the
+  host.  More threads than allocated CPUs could stall a fit.
+* Continuous FIML: the saturated model for the chi-square, previously
+  single-threaded and untimed, is now parallel. Objective and gradient run
+  in parallel over missingness patterns in single- and multi-group fits.
+* Standard errors use an analytical Hessian for continuous FIML, ML,
+  multi-group and `expected:` algebra models without definition variables.
+  Newton steps use it too, so multi-group and algebra fits need far fewer
+  iterations.  Set `FASTSEM_FD_HESSIAN=1` for the previous finite-difference
+  Hessian.
+* Multi-group continuous FIML no longer runs the DWLS warm start.
+* On a 12-thread laptop: a k = 20, N = 100,000 FIML fit went from 86 s to
+  7 s; a two-group k = 20, N = 10,000 joint fit from 305 s to 4 s.
+* Continuous FIML and ML never used the GPU; the engine now skips GPU kernel
+  compilation for them.
+* This release ships Linux binaries only (glibc 2.28 and later).
+
 # fastsemR 0.3.0
 
 ## One entry point for umx / OpenMx and lavaan
