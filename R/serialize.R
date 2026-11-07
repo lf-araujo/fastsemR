@@ -129,10 +129,7 @@
   msgs
 }
 
-# Ordinal FIML: the engine picks by device.  On a GPU that shares host memory
-# (APUs, integrated graphics, Apple Silicon) it stays on the GPU up to 8
-# observed variables and uses the CPU above, where long GPU jobs can freeze the
-# display; on a dedicated GPU it uses the GPU at any size.
+# Ordinal FIML: the engine times the GPU against the CPU and keeps the faster.
 # options(fastsemR.ordinal_gpu = TRUE / FALSE) sends `ordinalgpu: on / off` to
 # override; unset, no directive.
 .ordinal_gpu_choice <- function(pt) {

@@ -77,11 +77,11 @@ need at least one free mean in the model.
 
 \section{Ordinal models and the GPU}{
 
-The engine chooses by device.  On a GPU that shares memory with the host
-(APUs, integrated graphics, Apple Silicon) ordinal FIML runs on the GPU up to
-8 observed variables and on the CPU above, because long GPU jobs there can
-freeze the display; on a dedicated GPU it runs on the GPU at any size.
-\code{options(fastsemR.ordinal_gpu = TRUE)} uses the GPU at any size,
+The engine times the GPU against the CPU early in the fit, for the
+objective and the gradient separately, and keeps the faster; the log shows
+the result.  GPU work is split into short dispatches at any model size, so a
+GPU that also drives the display stays responsive.
+\code{options(fastsemR.ordinal_gpu = TRUE)} uses the GPU without measuring,
 \code{FALSE} the CPU.
 }
 

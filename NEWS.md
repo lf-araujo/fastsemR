@@ -1,3 +1,19 @@
+# fastsemR 0.5.1
+
+## Engine 0.5.1
+
+* Compiled GPU programs are cached on disk (`~/.cache/fastsem/opencl`, or
+  `FASTSEM_CL_CACHE`), so only the first fit on a machine pays the kernel
+  compile.  `FASTSEM_NO_CL_CACHE=1` turns the cache off.
+* `expected:` models on the GPU: work is split into short dispatches, as for
+  ordinal models, so a large definition-variable model no longer runs as one
+  long GPU job (which could hang an integrated GPU).
+* `--lbfgs` forces L-BFGS on every fit, not only ordinal and state-space fits.
+* The `SE Hessian:` log line always starts with the time.
+* Docs: the ordinal GPU choice is the measured faster of GPU and CPU; the
+  former 8-variable rule is gone.
+* This release ships Linux binaries only (glibc 2.28 and later).
+
 # fastsemR 0.5.0
 
 ## Engine 0.5.0
