@@ -1,3 +1,24 @@
+# fastsemR 0.5.0
+
+## Engine 0.5.0
+
+* Ordinal FIML has no limit on the number of variables.  The CPU objective and
+  gradient now run on every core at any size (above 8 variables they used to
+  run on one thread, GPU fits included), and the GPU computes the gradient as
+  well as the objective.
+* The engine times the GPU against the CPU once per fit and keeps the faster
+  for the objective and the gradient; the log shows the result.
+  `ordinalgpu: on` forces the GPU.
+* GPU work is split into short dispatches at any model size, so a GPU that
+  also drives the display stays responsive; the former 8-variable rule for
+  such GPUs is gone.  A GPU error moves the rest of the fit to the CPU.
+* GPU kernels are built for the model's size; the only limit left is the
+  device's own memory per thread, beyond which the fit uses the CPU.
+* Each fit logs one `Plan:` line with its devices and Hessian method.
+* Multi-group fits: missingness patterns were read from the wrong columns
+  when the group column was not the last data column; fixed.
+* This release ships Linux binaries only (glibc 2.28 and later).
+
 # fastsemR 0.4.0
 
 ## Engine 0.4.0: faster CPU fits
