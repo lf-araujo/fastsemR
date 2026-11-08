@@ -1,3 +1,22 @@
+# fastsemR 0.5.3
+
+## Engine 0.5.3
+
+* Ordinal FIML pools identical response rows (including identical
+  definition-variable values) into frequency weights before fitting.  Fits
+  with many repeated rows are much faster: k = 6, N = 50,000 went from
+  50,000 to 10,857 distinct rows and from 29.6 s to 13.6 s, with identical
+  results.
+* Fix: the GPU ordinal objective ignored row weights, so weighted ordinal
+  fits on the GPU were wrong.
+* GPU ordinal kernels split each row's quadrature over up to 64 threads
+  (`FASTSEM_CL_LANES` overrides), evaluate several parameter vectors in one
+  pass and sum rows on the device.  Ordinal standard errors request all
+  their gradients in one batch.
+* Complete-data ML setup and post-fit are faster at large k (a 45-variable
+  CFA went from 1.26 s to 0.68 s), with identical output.
+* This release ships Linux binaries only (glibc 2.28 and later).
+
 # fastsemR 0.5.2
 
 ## Engine 0.5.2
