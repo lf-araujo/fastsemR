@@ -1,3 +1,32 @@
+# fastsemR 0.5.2
+
+## Engine 0.5.2
+
+* Complete-data ML now uses the normal likelihood (divisor N) by default, as
+  lavaan's default, OpenMx with raw data and fastsem's FIML do;
+  `likelihood: wishart` keeps the N − 1 convention.  The chi-square follows
+  the likelihood in every case: before, models with intercepts reported a
+  normal-likelihood chi-square at Wishart estimates (Holzinger–Swineford
+  85.32, against lavaan's 85.31).  fastsemR already sent `likelihood: normal`,
+  so its estimates do not change.
+* Ordinal FIML integrates each row over its observed variables only: missing
+  variables are integrated out exactly instead of through the quadrature.
+  Fits with missing ordinal data are faster (about 9× per gradient at k = 8
+  with 30% MCAR) and move slightly towards OpenMx; on complete data the
+  results are unchanged.
+* Labelled, shared and anchored thresholds now have an exact gradient (they
+  were finite-differenced), and a free threshold just above a fixed one gets
+  the right derivative.
+* Every fit uses BFGS-TR, on CPU or GPU; standard errors come from one exact
+  Hessian at the optimum (analytical where available, else central
+  differences of the exact gradient).  `--lbfgs` still forces L-BFGS.  The
+  ordinal SE step that took minutes at k = 8 takes seconds.
+* GPU ordinal dispatches on dedicated GPUs use row blocks that fill the
+  device (compute units × 512 rows; `FASTSEM_CL_ROWS_PER_CU`); integrated
+  GPUs keep 256-row blocks.  `FASTSEM_CL_TIMING=all` logs every ordinal
+  dispatch and each kernel's private memory.
+* This release ships Linux binaries only (glibc 2.28 and later).
+
 # fastsemR 0.5.1
 
 ## Engine 0.5.1
