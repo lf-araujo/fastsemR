@@ -1,3 +1,18 @@
+# fastsemR 0.5.4
+
+## Engine 0.5.4
+
+* Ordinal FIML in auto mode chooses between the GPU and the CPU more
+  reliably.  The engine still times both early in the fit and keeps the
+  faster, but the CPU is now warmed up before it is timed (its first call
+  used to carry one-off setup the GPU had already paid), and each side keeps
+  the better of two timings.  The same model now takes the same path from
+  run to run.
+* A fit that starts on a single-precision GPU and moves to the CPU now
+  finishes at the CPU's stopping tolerance and computes its standard errors
+  with the CPU's step size, so it reaches the same optimum as a CPU fit.
+* This release ships Linux binaries only (glibc 2.28 and later).
+
 # fastsemR 0.5.3
 
 ## Engine 0.5.3
