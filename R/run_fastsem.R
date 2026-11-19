@@ -244,8 +244,23 @@ run_fastsem <- function(model, control = list(),
     if (!is.null(H)) model@output$hessian <- H
   }
   model@output$fastsem <- fs
+  # An optimiser stopped at its iteration limit: OpenMx's own code for that.
+  if (.iter_limit_warn(fs)) model@output$status$code <- 4L
   .self_check(check, "OpenMx", model@output$fit, fs, pt)
   model
+}
+
+# The engine lists optimisers that used their whole iteration cap without
+# converging (cap: OpenMx's max(1000, 3 * nParams), or `control$maxIter`).
+# Warn, as mxRun() does at its own limit; TRUE when any did.
+.iter_limit_warn <- function(fs) {
+  hits <- fs$iterLimit
+  if (!length(hits)) return(FALSE)
+  warning("fastsem: ", paste(hits, collapse = "; "),
+          " stopped at the iteration limit before converging; the estimates ",
+          "may not be at the optimum.  Raise it with control = list(maxIter = ...).",
+          call. = FALSE)
+  TRUE
 }
 
 # Covariance of OpenMx's free parameters from the engine's covariance over
@@ -304,6 +319,7 @@ run_fastsem <- function(model, control = list(),
   # test statistics, SEs (incl. robust), implied moments come out natively.
   fit <- .lav_refit(obj, P)
   fit@external$fastsem <- fs
+  if (.iter_limit_warn(fs)) fit@optim$converged <- FALSE
   # With fixed.x lavaan reports the likelihood conditional on the exogenous x;
   # fastsem fitted their moments freely (same estimates), so add the x
   # marginal at its MLE before comparing.

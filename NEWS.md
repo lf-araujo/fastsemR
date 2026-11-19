@@ -1,3 +1,24 @@
+# fastsemR 0.5.6
+
+## Engine 0.5.6
+
+* Every optimiser now gets at least OpenMx's iteration limit,
+  max(1000, 3 * nParams + 10 * nConstraints).  The trust-region optimiser
+  used to stop at 200 iterations: an age-based dual change score model fitted
+  from zero start values ended 17 steps short, 3.3 -2lnL units above OpenMx,
+  while the log said "Fitting done".  `control = list(maxIter = ...)` still
+  sets the limit exactly.
+* A fit that stops at its iteration limit before converging now says so: the
+  engine prints a warning, `run_fastsem()` raises an R warning, and the
+  returned model is marked as not converged (OpenMx status code 4, as
+  `mxRun()` gives at its own limit; lavaan `converged = FALSE`).  The result
+  list also carries the hits as `iterLimit`.
+* This release ships Linux binaries only (glibc 2.28 and later).
+
+## R package
+
+* `run_fastsem()` reports an iteration-limit stop as above.
+
 # fastsemR 0.5.5
 
 ## Engine 0.5.5
