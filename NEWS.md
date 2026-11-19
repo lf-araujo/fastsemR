@@ -1,3 +1,18 @@
+# fastsemR 0.5.5
+
+## Engine 0.5.5
+
+* GPU start-up is quicker.  The engine used to compile the whole set of
+  single-precision kernels at start-up and then discard them; it now checks
+  the device with one small kernel and builds each single-precision kernel
+  only when a fit uses it.  Double-precision fits (the usual case on a GPU
+  with float64) no longer build any of them.
+* The start-up log says whether each GPU kernel was compiled (with the time)
+  or loaded from the on-disk cache, e.g.
+  `OpenCL float64 GPU ready (FIML kernel loaded from cache).`  Before,
+  "compiling ..." was printed even when nothing was compiled.
+* This release ships Linux binaries only (glibc 2.28 and later).
+
 # fastsemR 0.5.4
 
 ## Engine 0.5.4
