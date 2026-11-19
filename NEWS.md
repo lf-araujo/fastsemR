@@ -1,3 +1,43 @@
+# fastsemR 0.5.7
+
+## Engine 0.5.7
+
+* Fits are now correct on badly scaled data.  The optimiser starts from the
+  diagonal of the expected information instead of a scalar identity, and a
+  factor's variance starts at half its marker indicator's variance.  On a
+  one-factor FIML model whose data were multiplied by 1000, 0.5.6 stopped
+  17,504 -2lnL units short of the optimum (2.1 units at x100) while reporting
+  convergence; 0.5.7 reaches the optimum at every scale in about 20 steps.
+* The convergence report no longer mistakes badly scaled directions for
+  unidentified ones: a fit stopped far from the optimum now says so (28 SE
+  from converged instead of 0.09), and any direction left out is logged.
+* Definition-variable FIML runs on all CPU cores: objective and gradient are
+  split over the definition-variable groups.  A bivariate dual change score
+  model with N = 10,000 went from 143 s to 17 s; a two-group model with a
+  definition variable from 283 s to 22 s.  Estimates and SEs are unchanged.
+* Definition-variable fits choose between GPU and CPU by timing both on the
+  data, as ordinal fits do; `FASTSEM_DEFVAR_GPU=on` keeps the GPU.  A fit on
+  the GPU leaves CPU for the driver and the display: half the cores on an
+  integrated GPU, all but two on a dedicated card.
+* Multi-group fits no longer slow down single-threaded work by starting the
+  thread pool where nothing uses it.
+* The saturated model's EM stops on a scale-free criterion (about 40% fewer
+  iterations, same chi-square); `saturated: off` skips it.
+* A warm-start check that cost two full objective evaluations and never
+  changed the start is gone.
+* This release ships Linux binaries only (glibc 2.28 and later).
+
+## R package
+
+* `run_fastsem()` on a lavaan model takes fastsem's standard errors and
+  parameter covariance when they are lavaan's own (ML, standard SEs, observed
+  information -- lavaan's choice with `missing = "ml"`) instead of having
+  lavaan recompute them: a k = 20, N = 10,000 missing-data CFA went from 215 s
+  to 16 s (lavaan's own fit: 128 s).  Robust SEs, expected-information SEs
+  (complete data) and models with `:=` parameters still come from lavaan.
+* `run_fastsem()` skips the engine's saturated model (`saturated: off`):
+  OpenMx and lavaan compute their own fit statistics.
+
 # fastsemR 0.5.6
 
 ## Engine 0.5.6

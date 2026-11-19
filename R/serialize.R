@@ -38,7 +38,10 @@
                rhs = as.character(cons$rhs %||% character(0)))
   manifest <- unique(unlist(attr(pt, "manifest")))
   og <- .ordinal_gpu_choice(pt)
+  # OpenMx and lavaan compute their own fit statistics at the fastsem solution,
+  # so the engine skips its saturated model (an EM, often a quarter of a fit).
   directives <- c(paste0("likelihood: ", attr(pt, "likelihood") %||% "normal"),
+                  "saturated: off",
                   if (!is.null(og)) paste0("ordinalgpu: ", if (og) "on" else "off"),
                   .fastsem_control_directives(control))
   list(rows = rows, cons = cons,

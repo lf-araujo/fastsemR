@@ -316,8 +316,13 @@ run_fastsem <- function(model, control = list(),
   P$start[i] <- est[free_rows$plabel]
   P$est[i]   <- est[free_rows$plabel]
   # Let lavaan evaluate its own model at the fastsem solution (no optimiser):
-  # test statistics, SEs (incl. robust), implied moments come out natively.
-  fit <- .lav_refit(obj, P)
+  # test statistics, SEs (incl. robust), implied moments come out natively --
+  # except the standard observed-information SEs, which fastsem has already
+  # computed and lavaan would recompute at length (about 90 of 100 s on a
+  # k = 20, N = 10,000 missing-data CFA): those are taken from fastsem.
+  own_se <- .lav_fastsem_se_ok(obj)
+  fit <- .lav_refit(obj, P, se_none = own_se)
+  if (own_se) fit <- .lav_set_fastsem_se(fit, pt, fs)
   fit@external$fastsem <- fs
   if (.iter_limit_warn(fs)) fit@optim$converged <- FALSE
   # With fixed.x lavaan reports the likelihood conditional on the exogenous x;
@@ -328,12 +333,47 @@ run_fastsem <- function(model, control = list(),
   fit
 }
 
+# fastsem's SEs stand in for lavaan's when they are the same quantity: ML,
+# standard (non-robust) SEs, from the observed information (lavaan's choice
+# with missing = "ml"; complete data default to the expected information,
+# which differs).  Defined (:=) parameters keep lavaan's delta-method SEs.
+.lav_fastsem_se_ok <- function(obj) {
+  opt <- obj@Options
+  se  <- obj@call$se
+  est <- toupper(opt$estimator.orig %||% opt$estimator)
+  identical(est, "ML") &&
+    (is.null(se) || identical(se, "standard") || identical(se, "default")) &&
+    identical(opt$information[1], "observed") &&
+    !any(lavaan::parTable(obj)$op == ":=")
+}
+
+# fastsem's SEs and parameter covariance into the slots lavaan reads them from
+# (ParTable$se, Fit@se, vcov), in lavaan's free-parameter order.  Equality-
+# labelled lavaan parameters share one fastsem parameter, so their rows of the
+# covariance repeat it.
+.lav_set_fastsem_se <- function(fit, pt, fs) {
+  PT <- fit@ParTable
+  free_rows <- pt[pt$free & !is.na(pt$lav_id), , drop = FALSE]
+  rowOf <- match(free_rows$lav_id, PT$id)
+  se <- numeric(length(PT$id))
+  se[rowOf] <- fs$fs_se[free_rows$plabel]
+  npar <- max(PT$free)
+  labs <- free_rows$plabel[match(match(seq_len(npar), PT$free), rowOf)]
+  V <- as.matrix(fs$vcov)[labs, labs, drop = FALSE]
+  dimnames(V) <- NULL
+  fit@ParTable$se <- se
+  fit@Fit@se <- se
+  fit@vcov <- list(se = "standard", information = "observed", vcov = V)
+  fit@Options$se <- "standard"
+  fit
+}
+
 # Re-run lavaan on the same parameter table, data and options with
 # `optim.method = "none"` at the given estimates.  Built from the object, not
 # from its call: update() re-evaluates the call in the wrong frame (data held
 # in a local variable are not found) and re-derives fixed.x; slot-based reuse
 # trips over the `se = "none"` that do.fit = FALSE stores.
-.lav_refit <- function(obj, P) {
+.lav_refit <- function(obj, P, se_none = FALSE) {
   opt <- obj@Options
   ng  <- lavaan::lavInspect(obj, "ngroups")
   X   <- lavaan::lavInspect(obj, "data")
@@ -348,7 +388,7 @@ run_fastsem <- function(model, control = list(),
   # passing a resolved test list back changes lavaan's information settings;
   # take the user's literal choice from the call, else the estimator default.
   lit  <- function(x) if (is.character(x)) x else "default"
-  se   <- lit(obj@call$se)
+  se   <- if (se_none) "none" else lit(obj@call$se)
   test <- lit(obj@call$test)
   args <- list(model = as.data.frame(obj@ParTable), data = df, start = P,
                optim.method = "none",
