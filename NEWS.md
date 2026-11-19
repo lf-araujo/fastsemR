@@ -25,7 +25,8 @@
   iterations, same chi-square); `saturated: off` skips it.
 * A warm-start check that cost two full objective evaluations and never
   changed the start is gone.
-* This release ships Linux binaries only (glibc 2.28 and later).
+* Binaries for Linux x86_64 (glibc 2.28 and later), macOS x86_64 and arm64,
+  and Windows x64.
 
 ## R package
 
