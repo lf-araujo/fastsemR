@@ -1,3 +1,21 @@
+# fastsemR 0.5.8
+
+## Engine 0.5.8
+
+* The automatic GPU/CPU choice compares like with like.  It timed the CPU
+  with half its threads (the pool a GPU fit gets), so it could keep a GPU that
+  was slower overall -- seen on an Apple GPU.  Ordinal fits now time the CPU
+  objective and gradient on all cores and the device ones on the pool a GPU fit
+  would use, before the fit starts; definition-variable fits time a whole step
+  (objective and gradient) on each side.  The thread cap applies only when the
+  GPU is kept.
+* `--f32-speed` now runs ordinal FIML on the single-precision GPU kernels
+  (they were skipped under the default variance parameterisation, so the fit
+  ran on the CPU), and finishes on the double-precision CPU objective, so
+  estimates and standard errors are double-precision ones.
+* Binaries for Linux x86_64 (glibc 2.28 and later), macOS x86_64 and arm64,
+  and Windows x64.
+
 # fastsemR 0.5.7
 
 ## Engine 0.5.7
