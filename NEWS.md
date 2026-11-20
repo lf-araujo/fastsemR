@@ -1,3 +1,20 @@
+# fastsemR 0.5.9
+
+## Engine 0.5.9
+
+* A fit on the GPU now leaves two cores for the graphics driver and the
+  display on every device; shared-memory GPUs (Apple silicon, AMD/Intel
+  integrated graphics) used to get half the cores, which cost more than it
+  saved.
+* The cap lasts only while the GPU works.  Definition-variable fits get every
+  core back for the standard errors after the GPU solve, and ordinal fits
+  (single- and multi-group) do when they finished on the CPU (a float32 fit
+  after its double-precision finish, or when the CPU won the timing).  On an
+  Apple M4 the standard-error step of a GPU definition-variable fit at
+  N = 1,000,000 took 722 s on half the cores against 577 s on all of them.
+* Binaries for Linux x86_64 (glibc 2.28 and later), macOS x86_64 and arm64,
+  and Windows x64.
+
 # fastsemR 0.5.8
 
 ## Engine 0.5.8
