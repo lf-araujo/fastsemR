@@ -1,3 +1,25 @@
+# fastsemR 0.5.11
+
+* `run_fastsem()` honours row weights.  OpenMx `mxData(weight = )` and
+  `mxData(frequency = )` (their product when both are set) and lavaan
+  `sampling.weights` reach the engine; both used to be dropped silently, so
+  the fit came back unweighted (the lavaan guard meant to refuse weighted
+  models never fired).  lavaan objects keep lavaan's robust standard errors
+  and scaled test, computed at the fastsem estimates.  Rows of weight 0 are
+  left out.  Frequency weights are treated as duplicated rows; OpenMx's own
+  `frequency` fit can differ from that, and the self-check then reports it.
+
+## Engine 0.5.11
+
+* Multi-group fits (continuous and ordinal) ignored `weight:`; they now use
+  each group's weights, and the multi-group −2lnL counts its constant with
+  them.
+* Weighted complete-data fits used the Wishart likelihood, so variances came
+  out N/(N−1) larger than in lavaan and OpenMx; they now use the normal
+  likelihood with N = Σw.
+* Binaries for Linux x86_64 (glibc 2.28 and later), macOS x86_64 and arm64,
+  and Windows x64.
+
 # fastsemR 0.5.10
 
 ## Engine 0.5.10

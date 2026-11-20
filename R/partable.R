@@ -194,6 +194,7 @@
                    ifelse(pt$free, paste0("@", pt$group, pt$mat, ":", pt$row,
                                           ":", pt$col), NA_character_))
   data <- lapply(groups, function(s) .mx_group_data(s))
+  attr(pt, "weights")  <- lapply(groups, function(s) .mx_group_weights(s))
   attr(pt, "manifest") <- lapply(groups, function(s) s@manifestVars)
   attr(pt, "latent")   <- lapply(groups, function(s) s@latentVars)
   attr(pt, "ordered")  <- unique(unlist(lapply(groups, function(s)
@@ -216,6 +217,25 @@
   if (is.null(dat@observed))
     stop("run_fastsem(): '", sub@name, "'@data@observed is NULL.", call. = FALSE)
   as.data.frame(dat@observed)
+}
+
+# Row weights of an OpenMx group: mxData(frequency =) times mxData(weight =)
+# -- OpenMx multiplies each row's likelihood by both -- or NULL without them.
+.mx_group_weights <- function(sub) {
+  dat <- sub@data
+  obs <- dat@observed
+  w <- NULL
+  for (slot in c("frequency", "weight")) {
+    col <- methods::slot(dat, slot)
+    if (length(col) == 1L && !is.na(col) && nzchar(col)) {
+      if (!col %in% names(obs))
+        stop("run_fastsem(): mxData ", slot, " column '", col, "' not found in '",
+             sub@name, "'.", call. = FALSE)
+      x <- as.numeric(obs[[col]])
+      w <- if (is.null(w)) x else w * x
+    }
+  }
+  w
 }
 
 # mxConstraints between labelled parameters (a == b, a < b, a > 0) map onto
@@ -253,8 +273,8 @@
     stop("run_fastsem(): lavaan estimator '", opt$estimator, "' is not ML-based; ",
          "fastsem returns ML/FIML point estimates.", call. = FALSE)
   clus <- tryCatch(lavaan::lavInspect(obj, "cluster"), error = function(e) NULL)
-  if (length(clus) || isTRUE(nzchar(opt$sampling.weights)))
-    stop("run_fastsem(): clustered or weighted lavaan models are not supported ",
+  if (length(clus))
+    stop("run_fastsem(): clustered lavaan models are not supported ",
          "through run_fastsem() yet.", call. = FALSE)
 
   P <- lavaan::parTable(obj)
@@ -329,6 +349,12 @@
   attr(pt, "ordered")  <- character(0)
   attr(pt, "constraints") <- P[P$op %in% c(":=", "<", ">"), c("lhs", "op", "rhs")]
   attr(pt, "data")     <- data
+  # Sampling weights as lavaan normalised them (sampling.weights.
+  # normalization): the relative scale across groups is part of the model.
+  # (@Options$sampling.weights is not kept; the weights are in @Data.)
+  wl <- obj@Data@weights
+  attr(pt, "weights")  <- if (length(wl) == ng) lapply(wl, function(x)
+    if (is.null(x)) NULL else as.numeric(x)) else rep(list(NULL), ng)
   attr(pt, "source")   <- "lavaan"
   attr(pt, "likelihood") <- if (identical(opt$likelihood, "wishart")) "wishart" else "normal"
   .ptab_finish(pt)

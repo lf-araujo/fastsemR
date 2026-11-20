@@ -40,8 +40,10 @@
   og <- .ordinal_gpu_choice(pt)
   # OpenMx and lavaan compute their own fit statistics at the fastsem solution,
   # so the engine skips its saturated model (an EM, often a quarter of a fit).
+  weighted <- .ptab_weighted(pt)
   directives <- c(paste0("likelihood: ", attr(pt, "likelihood") %||% "normal"),
                   "saturated: off",
+                  if (weighted) "weight: fastsem_w",
                   if (!is.null(og)) paste0("ordinalgpu: ", if (og) "on" else "off"),
                   .fastsem_control_directives(control))
   list(rows = rows, cons = cons,
@@ -52,14 +54,34 @@
        data = .ptab_engine_data(pt, manifest))
 }
 
+.ptab_weighted <- function(pt)
+  any(!vapply(attr(pt, "weights") %||% list(), is.null, TRUE))
+
 # Stacked numeric data under the model's own column names: manifest
-# variables (ordered factors as 0-based codes), definition columns, and the
-# group column `fastsem_grp` (1..n in data order) for multi-group models.
+# variables (ordered factors as 0-based codes), definition columns, the
+# group column `fastsem_grp` (1..n in data order) for multi-group models, and
+# the row weights `fastsem_w` (1 in an unweighted group) when any group has
+# them.  Rows of weight 0 are left out (OpenMx and lavaan drop them; the
+# engine would read a weight <= 0 as 1); negative or missing weights stop.
 .ptab_engine_data <- function(pt, manifest) {
   data <- attr(pt, "data")
+  wts  <- attr(pt, "weights")
+  weighted <- .ptab_weighted(pt)
   dvs  <- unique(pt$defvar[!is.na(pt$defvar)])
   blocks <- lapply(seq_along(data), function(g) {
     d    <- data[[g]]
+    w    <- if (weighted) (wts[[g]] %||% rep(1, nrow(d))) else NULL
+    if (!is.null(w)) {
+      if (length(w) != nrow(d))
+        stop("run_fastsem(): group ", g, " has ", length(w), " weights for ",
+             nrow(d), " rows.", call. = FALSE)
+      if (anyNA(w) || any(w < 0))
+        stop("run_fastsem(): weights must be non-negative and not missing ",
+             "(group ", g, ").", call. = FALSE)
+      keep <- w > 0
+      d <- d[keep, , drop = FALSE]
+      w <- w[keep]
+    }
     miss <- setdiff(c(manifest, dvs), names(d))
     if (length(miss))
       stop("run_fastsem(): column(s) ", paste(miss, collapse = ", "),
@@ -76,6 +98,7 @@
     m <- do.call(cbind, out)
     colnames(m) <- c(manifest, dvs)
     if (length(data) > 1L) m <- cbind(m, fastsem_grp = g)
+    if (!is.null(w)) m <- cbind(m, fastsem_w = w)
     m
   })
   do.call(rbind, blocks)

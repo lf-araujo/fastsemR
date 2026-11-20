@@ -341,7 +341,7 @@ run_fastsem <- function(model, control = list(),
   opt <- obj@Options
   se  <- obj@call$se
   est <- toupper(opt$estimator.orig %||% opt$estimator)
-  identical(est, "ML") &&
+  identical(est, "ML") && !.lav_weighted(obj) &&
     (is.null(se) || identical(se, "standard") || identical(se, "default")) &&
     identical(opt$information[1], "observed") &&
     !any(lavaan::parTable(obj)$op == ":=")
@@ -368,6 +368,9 @@ run_fastsem <- function(model, control = list(),
   fit
 }
 
+.lav_weighted <- function(obj)
+  any(!vapply(obj@Data@weights, is.null, TRUE))
+
 # Re-run lavaan on the same parameter table, data and options with
 # `optim.method = "none"` at the given estimates.  Built from the object, not
 # from its call: update() re-evaluates the call in the wrong frame (data held
@@ -379,8 +382,13 @@ run_fastsem <- function(model, control = list(),
   X   <- lavaan::lavInspect(obj, "data")
   if (ng == 1L) X <- list(X)
   glab <- lavaan::lavInspect(obj, "group.label")
+  # Sampling weights go back in as lavaan normalised them; normalising them
+  # again (the same rule) leaves them unchanged.
+  wl <- obj@Data@weights
+  weighted <- .lav_weighted(obj)
   df <- do.call(rbind, lapply(seq_len(ng), function(g) {
     d <- as.data.frame(X[[g]])
+    if (weighted) d$.fastsem_w <- wl[[g]] %||% rep(1, nrow(d))
     if (ng > 1L) d$.fastsem_group <- glab[g]
     d
   }))
@@ -390,6 +398,13 @@ run_fastsem <- function(model, control = list(),
   lit  <- function(x) if (is.character(x)) x else "default"
   se   <- if (se_none) "none" else lit(obj@call$se)
   test <- lit(obj@call$test)
+  # With sampling weights cfa()/sem() resolve "default" to robust SEs and a
+  # scaled test, but lavaan() called on a parameter table resolves it to
+  # standard ones: pass the resolved choices.
+  if (.lav_weighted(obj)) {
+    if (!se_none) se <- opt$se
+    test <- opt$test
+  }
   args <- list(model = as.data.frame(obj@ParTable), data = df, start = P,
                optim.method = "none",
                estimator = opt$estimator.orig %||% opt$estimator,
@@ -397,7 +412,15 @@ run_fastsem <- function(model, control = list(),
                fixed.x = opt$fixed.x, conditional.x = opt$conditional.x,
                likelihood = opt$likelihood)
   if (ng > 1L) { args$group <- ".fastsem_group"; args$group.label <- glab }
-  do.call(lavaan::lavaan, args)
+  if (weighted) {
+    args$sampling.weights <- ".fastsem_w"
+    args$sampling.weights.normalization <- opt$sampling.weights.normalization
+  }
+  # Passing the resolved robust test makes lavaan announce the information
+  # setting it then applies -- the one the user's own fit resolved silently.
+  withCallingHandlers(do.call(lavaan::lavaan, args), warning = function(w)
+    if (grepl("observed.information for ALL test statistics", conditionMessage(w),
+              fixed = TRUE)) invokeRestart("muffleWarning"))
 }
 
 # −2lnL of the exogenous observed covariates at their sample moments (N
@@ -406,14 +429,20 @@ run_fastsem <- function(model, control = list(),
 .lav_exo_m2ll <- function(obj, pt) {
   if (!isTRUE(obj@Options$fixed.x)) return(0)
   data <- attr(pt, "data")
+  wts  <- attr(pt, "weights")
   total <- 0
   for (g in seq_along(data)) {
     xv <- lavaan::lavNames(obj, "ov.x", block = g)
     if (!length(xv)) next
     X <- as.matrix(data[[g]][, xv, drop = FALSE])
     if (anyNA(X)) return(NA_real_)
-    n <- nrow(X); k <- ncol(X)
-    S <- stats::cov(X) * (n - 1) / n
+    k <- ncol(X)
+    # (weighted) moments with the N (sum of weights) denominator
+    w <- wts[[g]] %||% rep(1, nrow(X))
+    n <- sum(w)
+    m <- colSums(X * w) / n
+    Xc <- sweep(X, 2L, m)
+    S <- crossprod(Xc * sqrt(w)) / n
     total <- total + n * (k * log(2 * pi) +
                             as.numeric(determinant(S, logarithm = TRUE)$modulus) + k)
   }
