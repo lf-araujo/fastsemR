@@ -1,3 +1,29 @@
+# fastsemR 0.5.10
+
+## Engine 0.5.10
+
+* Ordinal FIML with definition variables now has an exact analytical
+  gradient, and standard errors from it.  Rows that share their
+  definition-variable values are fitted as one block; with few distinct values
+  (up to 32, such as sex or cohort) they become groups, so the GPU gradient
+  applies too; with many (such as age) the blocks run in parallel on the CPU.
+  A 3-wave ordinal IV-RI-CLPM with a sex covariate (N = 5,629, 57 parameters)
+  went from 890 s to 11 s at the same optimum.
+* One GPU/CPU choice for every path that can use the GPU (ordinal rows,
+  definition-variable rows, count models and `expected:` algebras), made
+  before the fit.  The CPU side is the fit's own first step, so it costs
+  nothing when the CPU wins; fits whose CPU step takes under 0.05 s skip the
+  GPU; the GPU is timed warm (an idle GPU runs at low clocks), and a clearly
+  slower GPU is not timed twice.
+* Count (negative-binomial) models run in double precision on the GPU when it
+  supports it, gradient and standard errors included, with the data uploaded
+  once; the GPU path now applies case weights.
+* Declaring a variable both in `ordered:` and in a `y | t1 + ...` line no
+  longer registers it twice (which doubled its thresholds); two `|` lines for
+  one variable are an error.
+* Binaries for Linux x86_64 (glibc 2.28 and later), macOS x86_64 and arm64,
+  and Windows x64.
+
 # fastsemR 0.5.9
 
 ## Engine 0.5.9
